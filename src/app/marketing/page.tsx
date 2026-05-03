@@ -233,7 +233,10 @@ function CriativoDrawer({ criativo, leads, users, onClose }: {
   const receita     = crLeads.filter((l) => l.status_funil === 'fechado')
                         .reduce((s, l) => s + (l.valor_fechado || 0), 0)
   const pipeline    = crLeads.filter((l) => !['fechado','declinado'].includes(l.status_funil))
-                        .reduce((s, l) => s + parseFloat(l.valor_estimado || '0'), 0)
+                        .reduce((s, l) => {
+                          const v = l.valor_contrato ?? parseFloat(l.valor_estimado || '0')
+                          return s + (isNaN(v) ? 0 : v)
+                        }, 0)
   const ticketMedio = vendas > 0 ? receita / vendas : 0
   const taxaConv    = totalLeads > 0 ? (vendas / totalLeads) * 100 : 0
   const taxaAgend   = totalLeads > 0 ? (agendados / totalLeads) * 100 : 0
