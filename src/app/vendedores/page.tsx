@@ -4,7 +4,7 @@ import { useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import AppShell from '@/components/layout/AppShell'
 import { useApp } from '@/contexts/AppContext'
-import { calcMetricasPorVendedor, formatCurrency } from '@/lib/utils'
+import { calcMetricasPorVendedor, calcConversaoPorEtapa, formatCurrency } from '@/lib/utils'
 import {
   Users, DollarSign, Calendar, ChevronUp, ChevronDown,
   X, AlertTriangle, Target,
@@ -274,12 +274,25 @@ export default function VendedoresPage() {
   const [sortKey, setSortKey] = useState<SortKey>('receita')
   const [sortDir, setSortDir] = useState<SortDir>('desc')
   const [drawerVendedorId, setDrawerVendedorId] = useState<string | null>(null)
+  const [funnelVendorId, setFunnelVendorId] = useState<string>('todos')
 
   const filteredLeads = useMemo(() => filterByPeriod(leads, period), [leads, period])
 
   const metricas = useMemo(
     () => calcMetricasPorVendedor(filteredLeads, users, historico),
     [filteredLeads, users, historico]
+  )
+
+  const funnelLeadIds = useMemo(() => {
+    const base = funnelVendorId === 'todos'
+      ? filteredLeads
+      : filteredLeads.filter((l) => l.vendedor_id === funnelVendorId)
+    return new Set(base.map((l) => l.id))
+  }, [filteredLeads, funnelVendorId])
+
+  const conversaoPorEtapa = useMemo(
+    () => calcConversaoPorEtapa(historico, funnelLeadIds),
+    [historico, funnelLeadIds]
   )
 
   const sorted = useMemo(() => {
@@ -366,6 +379,95 @@ export default function VendedoresPage() {
           <KpiCard label="Reuniões esta semana" value={totalReunioesSemana.toString()} icon={Calendar} color={AMBER} />
           <KpiCard label="Fechamentos" value={totalFechados.toString()} icon={Target} color={GREEN_L} />
           <KpiCard label="Receita Total" value={formatCurrency(totalReceita)} icon={DollarSign} color={GREEN} />
+        </div>
+
+        {/* ── Conversão por Etapa ──────────────────────────────────────────── */}
+        <div className="rounded-2xl overflow-hidden" style={{ background: '#FFFFFF', border: '1px solid #E0E6ED', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
+          <div className="px-5 py-4 flex items-center justify-between gap-4 flex-wrap" style={{ borderBottom: '1px solid #E0E6ED' }}>
+            <div>
+              <p className="font-bold text-[#1F2D3D]">Conversão por Etapa do Funil</p>
+              <p className="text-xs text-[#6B7C93] mt-0.5">Baseado no histórico real de movimentações</p>
+            </div>
+            <select
+              value={funnelVendorId}
+              onChange={(e) => setFunnelVendorId(e.target.value)}
+              className="text-xs font-semibold rounded-lg px-3 py-1.5 outline-none cursor-pointer"
+              style={{ background: '#F5F7FA', border: '1px solid #E0E6ED', color: '#1F2D3D' }}>
+              <option value="todos">Todos os vendedores</option>
+              {metricas.map((m) => (
+                <option key={m.id} value={m.id}>{m.nome}</option>
+              ))}
+            </select>
+          </div>
+          <div className="p-5 space-y-2">
+            {conversaoPorEtapa.map((row, idx) => {
+              const isLast = idx === conversaoPorEtapa.length - 1
+              const maxEntradas = Math.max(...conversaoPorEtapa.map((r) => r.entradas), 1)
+              const barWidth = (row.entradas / maxEntradas) * 100
+              const avPct = row.entradas > 0 ? (row.avancou / row.entradas) * 100 : 0
+              const decPct = row.entradas > 0 ? (row.declinado / row.entradas) * 100 : 0
+              const parPct = row.entradas > 0 ? (row.parado / row.entradas) * 100 : 0
+              const rateColor = isLast ? GREEN_L : row.taxaAvanco >= 50 ? GREEN_L : row.taxaAvanco >= 25 ? AMBER : RED
+
+              return (
+                <div key={row.etapa} className="flex items-center gap-3 group">
+                  {/* Label */}
+                  <div className="w-[130px] flex-shrink-0 text-right">
+                    <span className="text-[11px] font-semibold text-[#6B7C93]">{row.label}</span>
+                  </div>
+
+                  {/* Bar */}
+                  <div className="flex-1 relative h-6 rounded-md overflow-hidden" style={{ background: '#F0F4F8' }}>
+                    <div className="absolute inset-y-0 left-0 flex rounded-md overflow-hidden transition-all"
+                      style={{ width: `${barWidth}%` }}>
+                      {!isLast && row.entradas > 0 ? (
+                        <>
+                          <div style={{ width: `${avPct}%`, background: '#10B981' }} title={`Avançou: ${row.avancou}`} />
+                          <div style={{ width: `${decPct}%`, background: '#EF4444' }} title={`Declinado: ${row.declinado}`} />
+                          <div style={{ width: `${parPct}%`, background: '#94A3B8' }} title={`Parado: ${row.parado}`} />
+                        </>
+                      ) : (
+                        <div style={{ width: '100%', background: GREEN_L }} />
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Entradas */}
+                  <div className="w-10 text-right flex-shrink-0">
+                    <span className="text-xs font-bold text-[#1F2D3D]">{row.entradas}</span>
+                  </div>
+
+                  {/* Taxa */}
+                  {!isLast ? (
+                    <div className="w-14 text-right flex-shrink-0">
+                      <span className="text-[11px] font-bold" style={{ color: rateColor }}>
+                        {row.taxaAvanco.toFixed(0)}%
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="w-14 text-right flex-shrink-0">
+                      <span className="text-[11px] font-semibold text-[#A0AEC0]">fim</span>
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+
+            {/* Legenda */}
+            <div className="flex items-center gap-4 pt-3 border-t border-[#F0F4F8]">
+              {[
+                { color: '#10B981', label: 'Avançou' },
+                { color: '#EF4444', label: 'Declinado' },
+                { color: '#94A3B8', label: 'Parado/Sem mov.' },
+              ].map((l) => (
+                <div key={l.label} className="flex items-center gap-1.5">
+                  <div className="w-3 h-3 rounded-sm flex-shrink-0" style={{ background: l.color }} />
+                  <span className="text-[10px] text-[#6B7C93]">{l.label}</span>
+                </div>
+              ))}
+              <span className="text-[10px] text-[#A0AEC0] ml-auto">Barras proporcionais ao volume de entradas · % = taxa de avanço</span>
+            </div>
+          </div>
         </div>
 
         {/* ── Tabela ranking ────────────────────────────────────────────────── */}

@@ -1,4 +1,4 @@
-import type { Lead, MetricaCriativo, StatusFunil, GargaloItem } from '@/types'
+import type { Lead, MetricaCriativo, StatusFunil, GargaloItem, HistoricoMovimentacao } from '@/types'
 import { FUNIL_LABELS } from '@/types'
 import { clsx, type ClassValue } from 'clsx'
 
@@ -455,4 +455,73 @@ export function isFollowupAtrasado(lead: Lead): boolean {
   const ref = lead.ultima_interacao_em ?? lead.data_criacao
   const hours = (Date.now() - new Date(ref).getTime()) / 3_600_000
   return hours > 48
+}
+
+// ─── CONVERSÃO REAL POR ETAPA (baseada no histórico) ──────────────────────────
+// Para cada transição consecutiva do funil, calcula quantos leads que entraram
+// na etapa X avançaram para X+1, foram declinados, ou ficaram parados.
+export interface ConversaoEtapa {
+  etapa: StatusFunil
+  label: string
+  entradas: number
+  avancou: number
+  declinado: number
+  parado: number
+  taxaAvanco: number
+}
+
+export function calcConversaoPorEtapa(
+  historico: HistoricoMovimentacao[],
+  leadIds: Set<string>
+): ConversaoEtapa[] {
+  const ETAPAS: StatusFunil[] = [
+    'trafego_pago', 'primeiro_contato', 'followup1', 'followup2', 'followup3',
+    'agendado', 'reuniao_realizada', 'contrato_enviado', 'contrato_assinado', 'fechado',
+  ]
+
+  // Filtrar pelo conjunto de leads e ordenar por data
+  const hist = historico
+    .filter((h) => leadIds.has(h.lead_id))
+    .sort((a, b) => a.data.localeCompare(b.data))
+
+  // Agrupar por lead
+  const byLead: Record<string, HistoricoMovimentacao[]> = {}
+  for (const h of hist) {
+    if (!byLead[h.lead_id]) byLead[h.lead_id] = []
+    byLead[h.lead_id].push(h)
+  }
+
+  return ETAPAS.map((etapa, idx) => {
+    const proximaEtapa = ETAPAS[idx + 1] ?? null
+
+    // Leads que entraram nesta etapa
+    const leadsEntrados = new Set<string>()
+    for (const [leadId, movs] of Object.entries(byLead)) {
+      if (movs.some((m) => m.para_status === etapa)) leadsEntrados.add(leadId)
+    }
+
+    let avancou = 0
+    let declinado = 0
+
+    for (const leadId of leadsEntrados) {
+      const movs = byLead[leadId]
+      // Última vez que o lead entrou nesta etapa
+      const lastIdx = [...movs].reverse().findIndex((m) => m.para_status === etapa)
+      if (lastIdx === -1) continue
+      const lastEntradaData = movs[movs.length - 1 - lastIdx].data
+      // Movimentações posteriores a essa entrada
+      const depois = movs.filter((m) => m.data > lastEntradaData)
+      if (proximaEtapa && depois.some((m) => m.para_status === proximaEtapa)) {
+        avancou++
+      } else if (depois.some((m) => m.para_status === 'declinado')) {
+        declinado++
+      }
+    }
+
+    const entradas = leadsEntrados.size
+    const parado = entradas - avancou - declinado
+    const taxaAvanco = entradas > 0 ? (avancou / entradas) * 100 : 0
+
+    return { etapa, label: FUNIL_LABELS[etapa], entradas, avancou, declinado, parado, taxaAvanco }
+  })
 }
