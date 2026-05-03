@@ -103,7 +103,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
       try {
         const results = await Promise.all([
-          supabase.from('users').select('id, nome, email, tipo, vendedor_vinculado, ativo, google_refresh_token, google_email'),
+          supabase.from('users').select('id, nome, email, tipo, vendedor_vinculado, ativo'),
           supabase.from('leads').select('*'),
           supabase.from('anotacoes').select('*'),
           supabase.from('historico_movimentacoes').select('*'),
@@ -176,8 +176,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         tipo: u.tipo as User['tipo'],
         vendedorVinculado: (u.vendedor_vinculado as string) ?? undefined,
         ativo: u.ativo !== false,
-        google_refresh_token: (u.google_refresh_token as string) ?? undefined,
-        google_email: (u.google_email as string) ?? undefined,
       }))
       setUsers(mappedUsers)
 
@@ -317,7 +315,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const login = useCallback(async (email: string, senha: string): Promise<string | null> => {
     const { data, error } = await supabase
       .from('users')
-      .select('id, nome, email, tipo, vendedor_vinculado, ativo, google_refresh_token, google_email')
+      .select('id, nome, email, tipo, vendedor_vinculado, ativo')
       .eq('email', email)
       .eq('senha', senha)
       .maybeSingle()
@@ -338,6 +336,21 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
     if (!data || data.ativo === false) return null
 
+    // Busca campos Google separadamente — colunas podem não existir ainda
+    let google_refresh_token: string | undefined
+    let google_email: string | undefined
+    try {
+      const { data: gData } = await supabase
+        .from('users')
+        .select('google_refresh_token, google_email')
+        .eq('id', data.id)
+        .maybeSingle()
+      if (gData) {
+        google_refresh_token = (gData as Record<string, unknown>).google_refresh_token as string | undefined
+        google_email = (gData as Record<string, unknown>).google_email as string | undefined
+      }
+    } catch { /* colunas não existem ainda — ignora */ }
+
     const user: User = {
       id: data.id,
       nome: data.nome,
@@ -345,8 +358,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       tipo: data.tipo,
       vendedorVinculado: data.vendedor_vinculado ?? undefined,
       ativo: data.ativo !== false,
-      google_refresh_token: (data as Record<string, unknown>).google_refresh_token as string | undefined,
-      google_email: (data as Record<string, unknown>).google_email as string | undefined,
+      google_refresh_token,
+      google_email,
     }
     setCurrentUser(user)
     localStorage.setItem('crm_user', JSON.stringify(user))
@@ -355,19 +368,21 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const refreshGoogleConnection = useCallback(async () => {
     if (!currentUser) return
-    const { data } = await supabase
-      .from('users')
-      .select('id, nome, email, tipo, vendedor_vinculado, ativo, google_refresh_token, google_email')
-      .eq('id', currentUser.id)
-      .maybeSingle()
-    if (!data) return
-    const updated: User = {
-      ...currentUser,
-      google_refresh_token: (data as Record<string, unknown>).google_refresh_token as string | undefined,
-      google_email: (data as Record<string, unknown>).google_email as string | undefined,
-    }
-    setCurrentUser(updated)
-    localStorage.setItem('crm_user', JSON.stringify(updated))
+    try {
+      const { data } = await supabase
+        .from('users')
+        .select('google_refresh_token, google_email')
+        .eq('id', currentUser.id)
+        .maybeSingle()
+      if (!data) return
+      const updated: User = {
+        ...currentUser,
+        google_refresh_token: (data as Record<string, unknown>).google_refresh_token as string | undefined,
+        google_email: (data as Record<string, unknown>).google_email as string | undefined,
+      }
+      setCurrentUser(updated)
+      localStorage.setItem('crm_user', JSON.stringify(updated))
+    } catch { /* colunas não existem ainda */ }
   }, [currentUser])
 
   const logout = useCallback(() => {
