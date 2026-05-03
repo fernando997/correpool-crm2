@@ -63,6 +63,7 @@ type Period = 'todos' | '7d' | '30d' | '90d' | 'custom'
 type SortKey =
   | 'utm_content' | 'total_leads' | 'taxa_resposta' | 'taxa_agendamento'
   | 'taxa_conversao' | 'vendas' | 'receita_total' | 'ticket_medio' | 'score'
+  | 'desqualificados' | 'taxa_desqualificacao'
 type SortDir = 'asc' | 'desc'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -1174,21 +1175,23 @@ export default function MarketingPage() {
                 )
               })()}
 
-              {/* Pior */}
+              {/* Mais Desqualificados */}
               {(() => {
-                const worst = criativos[criativos.length - 1]
+                const maisDesq = [...criativos]
+                  .filter((m) => m.total_leads >= 3)
+                  .sort((a, b) => b.taxa_desqualificacao - a.taxa_desqualificacao)[0]
                 return (
                   <div className="card p-5" style={{ borderTop: `3px solid ${RED}` }}>
                     <div className="flex items-center gap-2 mb-3">
                       <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: `${RED}12` }}>
                         <AlertTriangle size={16} style={{ color: RED }} />
                       </div>
-                      <p className="text-[10px] font-bold uppercase tracking-widest" style={{ color: RED }}>Atenção</p>
+                      <p className="text-[10px] font-bold uppercase tracking-widest" style={{ color: RED }}>Mais Desqualificados</p>
                     </div>
-                    <p className="text-sm font-bold text-[#1F2D3D] mb-1">{CRIATIVO_LABELS[worst?.utm_content] || worst?.utm_content}</p>
-                    <p className="text-2xl font-extrabold" style={{ color: RED }}>{worst?.taxa_conversao.toFixed(0)}%</p>
+                    <p className="text-sm font-bold text-[#1F2D3D] mb-1">{CRIATIVO_LABELS[maisDesq?.utm_content] || maisDesq?.utm_content || '—'}</p>
+                    <p className="text-2xl font-extrabold" style={{ color: RED }}>{maisDesq?.taxa_desqualificacao.toFixed(0) ?? 0}%</p>
                     <p className="text-xs mt-2 text-[#6B7C93]">
-                      {worst?.total_leads} leads — {formatCurrency(worst?.receita_total || 0)} receita
+                      {maisDesq?.desqualificados ?? 0} desqual. de {maisDesq?.total_leads ?? 0} leads
                     </p>
                   </div>
                 )
@@ -1222,6 +1225,8 @@ export default function MarketingPage() {
                         { key: 'receita_total'    as SortKey, label: 'Receita' },
                         { key: 'ticket_medio'     as SortKey, label: 'Ticket Médio' },
                         { key: 'score'            as SortKey, label: 'Score' },
+                        { key: 'desqualificados'     as SortKey, label: 'Desqual.' },
+                        { key: 'taxa_desqualificacao' as SortKey, label: '% Desqual.' },
                       ]).map(({ key, label, w }) => (
                         <th key={key} style={{ width: w, padding: '12px 16px', textAlign: 'left', cursor: 'pointer' }}
                           onClick={() => handleSort(key)}
@@ -1300,6 +1305,18 @@ export default function MarketingPage() {
                           <td style={{ padding: '14px 16px' }}>
                             <ScoreRing score={m.score} max={maxScore} />
                           </td>
+                          <td style={{ padding: '14px 16px' }}>
+                            <span className="text-sm font-bold"
+                              style={{ color: m.desqualificados > 0 ? RED : '#3d5a7a' }}>
+                              {m.desqualificados}
+                            </span>
+                          </td>
+                          <td style={{ padding: '14px 16px' }}>
+                            <PercentBar
+                              value={m.taxa_desqualificacao}
+                              color={m.taxa_desqualificacao >= 30 ? RED : m.taxa_desqualificacao >= 15 ? AMBER : GREEN_L}
+                            />
+                          </td>
                         </tr>
                       )
                     })}
@@ -1308,6 +1325,68 @@ export default function MarketingPage() {
               </div>
             </div>
 
+
+            {/* ── Qualidade de Leads por Criativo ─────────────────────────── */}
+            <div className="card p-5">
+              <div className="flex items-start justify-between gap-4 mb-5">
+                <div>
+                  <h3 className="section-title flex items-center gap-2">
+                    <AlertTriangle size={15} style={{ color: RED }} />
+                    Qualidade de Leads por Criativo
+                  </h3>
+                  <p className="text-xs text-text-muted mt-0.5">
+                    Taxa de desqualificação por criativo — quanto maior, pior a qualidade dos leads captados
+                  </p>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                {(() => {
+                  const maxTaxa = Math.max(...criativos.map((c) => c.taxa_desqualificacao), 1)
+                  return [...criativos]
+                    .filter((m) => m.total_leads > 0)
+                    .sort((a, b) => b.taxa_desqualificacao - a.taxa_desqualificacao)
+                    .map((m) => {
+                      const taxa = m.taxa_desqualificacao
+                      const barColor = taxa >= 30 ? RED : taxa >= 15 ? AMBER : GREEN_L
+                      const barWidth = maxTaxa > 0 ? (taxa / maxTaxa) * 100 : 0
+                      return (
+                        <div key={m.utm_content}>
+                          <div className="flex items-center justify-between mb-1.5">
+                            <div className="flex items-center gap-2 min-w-0">
+                              {taxa >= 30 && <AlertTriangle size={11} style={{ color: RED, flexShrink: 0 }} />}
+                              <span className="text-xs font-semibold text-text-primary truncate">
+                                {CRIATIVO_LABELS[m.utm_content] || m.utm_content}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-3 flex-shrink-0 ml-4">
+                              <span className="text-[10px] text-text-dim">{m.desqualificados} desqual. / {m.total_leads} leads</span>
+                              <span className="text-xs font-bold w-10 text-right" style={{ color: barColor }}>{taxa.toFixed(0)}%</span>
+                            </div>
+                          </div>
+                          <div className="w-full h-2 rounded-full" style={{ background: '#E0E6ED' }}>
+                            <div className="h-2 rounded-full transition-all"
+                              style={{ width: `${barWidth}%`, background: barColor }} />
+                          </div>
+                        </div>
+                      )
+                    })
+                })()}
+              </div>
+
+              <div className="flex items-center gap-5 mt-5 pt-4" style={{ borderTop: '1px solid #E0E6ED' }}>
+                {[
+                  { color: RED,     label: '≥ 30% — crítico' },
+                  { color: AMBER,   label: '15–29% — atenção' },
+                  { color: GREEN_L, label: '< 15% — aceitável' },
+                ].map((l) => (
+                  <div key={l.label} className="flex items-center gap-1.5">
+                    <div className="w-3 h-3 rounded-sm flex-shrink-0" style={{ background: l.color }} />
+                    <span className="text-[10px] text-text-muted">{l.label}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
 
             {/* Insights automáticos */}
             <div className="card p-5">
