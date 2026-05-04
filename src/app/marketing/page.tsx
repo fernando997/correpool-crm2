@@ -1140,9 +1140,9 @@ export default function MarketingPage() {
                       const recCfg = REC_CONFIG[rec]
                       const RecIcon = recCfg.icon
                       const color = CHART_PALETTE[idx % CHART_PALETTE.length]
-                      const campCriativos = [...criativos]
-                        .filter((cr) => cr.utm_campaign === c.campanha)
-                        .sort((a, b) => b.score - a.score)
+                      const campCriativos = calcMetricasPorCriativo(
+                        filteredLeads.filter((l) => l.utm_campaign === c.campanha)
+                      )
                       const maxCrScore = Math.max(...campCriativos.map((cr) => cr.score), 1)
                       const maxDesqTaxa = Math.max(...campanhas.filter((x) => x.total_leads >= 3).map((x) => x.total_leads > 0 ? (x.desqualificados / x.total_leads) * 100 : 0), 0)
                       const isBestConv = idx === 0
