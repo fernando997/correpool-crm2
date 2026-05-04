@@ -287,6 +287,7 @@ function LeadDetailContent({ lead }: { lead: Lead }) {
   const [editing, setEditing]               = useState(false)
   const [editForm, setEditForm]             = useState<Lead>(lead)
   const [showSchedule, setShowSchedule]     = useState(false)
+  const [isRescheduling, setIsRescheduling] = useState(false)
   const [scheduleForm, setScheduleForm]     = useState({ data: '', hora: '', link: '' })
   const [showDeclineModal, setShowDeclineModal]   = useState(false)
   const [showTempModal, setShowTempModal]         = useState(false)
@@ -319,7 +320,9 @@ function LeadDetailContent({ lead }: { lead: Lead }) {
       hora_reuniao: scheduleForm.hora,
       link_meet: scheduleForm.link || undefined,
     })
-    moveLead(lead.id, 'agendado')
+    if (!isRescheduling) {
+      moveLead(lead.id, 'agendado')
+    }
 
     // Google Calendar integration
     if (currentUser?.google_refresh_token) {
@@ -346,7 +349,18 @@ function LeadDetailContent({ lead }: { lead: Lead }) {
     }
 
     setShowSchedule(false)
+    setIsRescheduling(false)
     setScheduleForm({ data: '', hora: '', link: '' })
+  }
+
+  const startReschedule = () => {
+    setScheduleForm({
+      data: lead.data_reuniao || '',
+      hora: lead.hora_reuniao || '',
+      link: lead.link_meet || '',
+    })
+    setIsRescheduling(true)
+    setShowSchedule(true)
   }
 
   const handleFechado = () => {
@@ -857,7 +871,7 @@ function LeadDetailContent({ lead }: { lead: Lead }) {
                   <Calendar size={14} style={{ color: '#B45309' }} /> Reunião
                 </h3>
               </div>
-              {lead.reuniao_agendada ? (
+              {lead.reuniao_agendada && !showSchedule ? (
                 <div className="rounded-xl p-4 space-y-2" style={{ background: '#FFFBEB', border: '1px solid #FDE68A' }}>
                   <p className="font-bold text-sm" style={{ color: '#B45309' }}>Reunião Agendada</p>
                   <p className="text-sm text-[#374151]">
@@ -875,6 +889,13 @@ function LeadDetailContent({ lead }: { lead: Lead }) {
                     style={{ background: 'linear-gradient(135deg, #7C3AED, #6D28D9)' }}>
                     Reunião Realizada
                   </button>
+                  <button onClick={startReschedule}
+                    className="w-full py-2 rounded-lg text-xs font-semibold transition-colors border flex items-center justify-center gap-1.5"
+                    style={{ background: '#F0F9FF', color: '#0284C7', borderColor: '#BAE6FD' }}
+                    onMouseEnter={(e) => e.currentTarget.style.background = '#E0F2FE'}
+                    onMouseLeave={(e) => e.currentTarget.style.background = '#F0F9FF'}>
+                    <CalendarClock size={13} /> Reagendar Reunião
+                  </button>
                 </div>
               ) : !showSchedule ? (
                 <button onClick={() => setShowSchedule(true)} className="btn-secondary w-full text-sm">
@@ -882,6 +903,11 @@ function LeadDetailContent({ lead }: { lead: Lead }) {
                 </button>
               ) : (
                 <div className="space-y-3">
+                  {isRescheduling && (
+                    <p className="text-xs font-semibold flex items-center gap-1.5" style={{ color: '#0284C7' }}>
+                      <CalendarClock size={12} /> Reagendando reunião
+                    </p>
+                  )}
                   <div>
                     <label className="label block mb-1">Data</label>
                     <input type="date" className="input text-sm" value={scheduleForm.data}
@@ -900,8 +926,11 @@ function LeadDetailContent({ lead }: { lead: Lead }) {
                   </div>
                   <GoogleCalendarConnectCompact />
                   <div className="flex gap-2">
-                    <button onClick={() => setShowSchedule(false)} className="btn-secondary flex-1 text-xs">Cancelar</button>
-                    <button onClick={handleSchedule} className="btn-success flex-1 text-xs">Confirmar</button>
+                    <button onClick={() => { setShowSchedule(false); setIsRescheduling(false); setScheduleForm({ data: '', hora: '', link: '' }) }}
+                      className="btn-secondary flex-1 text-xs">Cancelar</button>
+                    <button onClick={handleSchedule} className="btn-success flex-1 text-xs">
+                      {isRescheduling ? 'Confirmar Reagendamento' : 'Confirmar'}
+                    </button>
                   </div>
                 </div>
               )}
