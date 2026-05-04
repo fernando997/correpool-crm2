@@ -969,16 +969,22 @@ function LeadDetailContent({ lead }: { lead: Lead }) {
                     </button>
                   </>
                 )}
-                <button onClick={() => setShowDeclineModal(true)}
-                  className="w-full text-xs py-2 rounded-lg font-semibold transition-colors border flex items-center justify-center gap-1.5"
-                  style={{ background: '#FEF2F2', color: '#B91C1C', borderColor: '#FECACA' }}
-                  onMouseEnter={(e) => e.currentTarget.style.background = '#FEE2E2'}
-                  onMouseLeave={(e) => e.currentTarget.style.background = '#FEF2F2'}>
-                  <XCircle size={13} /> Declinar Lead
-                </button>
+                {lead.status_funil !== 'declinado' && (
+                  <button onClick={() => setShowDeclineModal(true)}
+                    className="w-full text-xs py-2 rounded-lg font-semibold transition-colors border flex items-center justify-center gap-1.5"
+                    style={{ background: '#FEF2F2', color: '#B91C1C', borderColor: '#FECACA' }}
+                    onMouseEnter={(e) => e.currentTarget.style.background = '#FEE2E2'}
+                    onMouseLeave={(e) => e.currentTarget.style.background = '#FEF2F2'}>
+                    <XCircle size={13} /> Declinar Lead
+                  </button>
+                )}
                 {lead.status_funil === 'declinado' && lead.motivo_perda && !MOTIVOS_DESQUALIFICANTES.has(lead.motivo_perda) && (
                   <button
-                    onClick={() => moveLead(lead.id, 'primeiro_contato', { temperatura: 'frio' })}
+                    onClick={() => {
+                      if (window.confirm(`Confirmar tentativa de contato com ${lead.nome}? O lead voltará para Primeiro Contato.`)) {
+                        moveLead(lead.id, 'primeiro_contato', { temperatura: 'frio' })
+                      }
+                    }}
                     className="w-full text-xs py-2 rounded-lg font-semibold transition-colors border flex items-center justify-center gap-1.5"
                     style={{ background: '#F0F9FF', color: '#0284C7', borderColor: '#BAE6FD' }}
                     onMouseEnter={(e) => e.currentTarget.style.background = '#E0F2FE'}
