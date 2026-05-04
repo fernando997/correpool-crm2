@@ -40,6 +40,10 @@ const CAMPAIGN_LABELS: Record<string, string> = {
   brand_awareness_q1:    'Brand Awareness Q1',
 }
 
+function campLabel(name: string) {
+  return (CAMPAIGN_LABELS[name] || name).replace(/\+/g, ' ').replace(/\s{2,}/g, ' ').trim()
+}
+
 const CRIATIVO_LABELS: Record<string, string> = {
   video_depoimento_cliente:     'Vídeo Depoimento',
   carrossel_beneficios:         'Carrossel Benefícios',
@@ -318,9 +322,9 @@ function CriativoDrawer({ criativo, leads, users, onClose }: {
                 )}
                 {campanha && (
                   <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full truncate max-w-[180px]"
-                    title={CAMPAIGN_LABELS[campanha] || campanha}
+                    title={campLabel(campanha)}
                     style={{ background: '#F5F7FA', color: '#6B7C93', border: '1px solid #E0E6ED' }}>
-                    {CAMPAIGN_LABELS[campanha] || campanha}
+                    {campLabel(campanha)}
                   </span>
                 )}
                 <span className="text-[10px] text-[#A0AEC0]">{totalLeads} leads no período</span>
@@ -800,8 +804,8 @@ export default function MarketingPage() {
   const sortedCampanhas = useMemo(() => {
     return [...campanhas].sort((a, b) => {
       if (campSortKey === 'campanha') {
-        const la = CAMPAIGN_LABELS[a.campanha] || a.campanha
-        const lb = CAMPAIGN_LABELS[b.campanha] || b.campanha
+        const la = campLabel(a.campanha)
+        const lb = campLabel(b.campanha)
         return campSortDir === 'asc' ? la.localeCompare(lb) : lb.localeCompare(la)
       }
       if (campSortKey === 'taxa_desq') {
@@ -828,7 +832,7 @@ export default function MarketingPage() {
   // ── Download CSVs ──────────────────────────────────────────────────────────
   function exportCampanhas() {
     const rows = campanhas.map((c) => ({
-      Campanha: CAMPAIGN_LABELS[c.campanha] || c.campanha,
+      Campanha: campLabel(c.campanha),
       Leads: c.total_leads,
       'Taxa Resposta (%)': c.taxa_resposta.toFixed(1),
       'Taxa Agendamento (%)': c.taxa_agendamento.toFixed(1),
@@ -862,7 +866,7 @@ export default function MarketingPage() {
     const rows = campanhas.map((c) => {
       const rec = getRecomendacao(c.taxa_conversao, c.ticket_medio, c.taxa_agendamento)
       return {
-        Campanha: CAMPAIGN_LABELS[c.campanha] || c.campanha,
+        Campanha: campLabel(c.campanha),
         Recomendacao: REC_CONFIG[rec].label,
         'Taxa Conversao (%)': c.taxa_conversao.toFixed(1),
         'Ticket Medio (R$)': c.ticket_medio,
@@ -875,7 +879,7 @@ export default function MarketingPage() {
   }
 
   const chartCampanhas = campanhas.map((c) => ({
-    name: (CAMPAIGN_LABELS[c.campanha] || c.campanha).replace(' Q1', ''),
+    name: (campLabel(c.campanha)).replace(' Q1', ''),
     Leads: c.total_leads,
     Vendas: c.vendas,
     'Taxa Conv. (%)': parseFloat(c.taxa_conversao.toFixed(1)),
@@ -946,7 +950,7 @@ export default function MarketingPage() {
             <select value={campFiltro} onChange={(e) => setCampFiltro(e.target.value)}
               className="input text-xs py-1.5 w-auto min-w-[160px]">
               <option value="todas">Todas as Campanhas</option>
-              {allCamps.map((c) => <option key={c} value={c}>{CAMPAIGN_LABELS[c] || c}</option>)}
+              {allCamps.map((c) => <option key={c} value={c}>{campLabel(c)}</option>)}
             </select>
 
             {/* Fonte */}
@@ -1084,7 +1088,7 @@ export default function MarketingPage() {
                       </div>
                       <p className="text-[10px] font-bold uppercase tracking-widest" style={{ color: GREEN_L }}>Melhor Conversão</p>
                     </div>
-                    <p className="text-sm font-bold text-[#1F2D3D] mb-1 truncate">{CAMPAIGN_LABELS[best.campanha] || best.campanha}</p>
+                    <p className="text-sm font-bold text-[#1F2D3D] mb-1 truncate">{campLabel(best.campanha)}</p>
                     <p className="text-2xl font-extrabold" style={{ color: GREEN_L }}>{best.taxa_conversao.toFixed(1)}%</p>
                     <p className="text-xs text-[#6B7C93] mt-2">{best.vendas} vendas · {best.total_leads} leads · {formatCurrency(best.receita_total)}</p>
                   </div>
@@ -1101,7 +1105,7 @@ export default function MarketingPage() {
                       </div>
                       <p className="text-[10px] font-bold uppercase tracking-widest" style={{ color: BLUE_L }}>Mais Leads</p>
                     </div>
-                    <p className="text-sm font-bold text-[#1F2D3D] mb-1 truncate">{CAMPAIGN_LABELS[best.campanha] || best.campanha}</p>
+                    <p className="text-sm font-bold text-[#1F2D3D] mb-1 truncate">{campLabel(best.campanha)}</p>
                     <p className="text-2xl font-extrabold" style={{ color: BLUE_L }}>{best.total_leads}</p>
                     <p className="text-xs text-[#6B7C93] mt-2">{best.taxa_agendamento.toFixed(0)}% agend. · score {best.score.toFixed(0)}</p>
                   </div>
@@ -1121,7 +1125,7 @@ export default function MarketingPage() {
                       </div>
                       <p className="text-[10px] font-bold uppercase tracking-widest" style={{ color: RED }}>Mais Desqualificados</p>
                     </div>
-                    <p className="text-sm font-bold text-[#1F2D3D] mb-1 truncate">{CAMPAIGN_LABELS[worst.campanha] || worst.campanha}</p>
+                    <p className="text-sm font-bold text-[#1F2D3D] mb-1 truncate">{campLabel(worst.campanha)}</p>
                     <p className="text-2xl font-extrabold" style={{ color: RED }}>{taxa.toFixed(1)}%</p>
                     <p className="text-xs text-[#6B7C93] mt-2">{worst.desqualificados} desqual. de {worst.total_leads} leads</p>
                   </div>
@@ -1221,7 +1225,7 @@ export default function MarketingPage() {
                               {isMostDesq && <AlertTriangle size={12} style={{ color: RED, flexShrink: 0 }} />}
                               <div className="min-w-0">
                                 <p className="text-xs font-semibold text-text-primary leading-snug">
-                                  {CAMPAIGN_LABELS[c.campanha] || c.campanha}
+                                  {campLabel(c.campanha)}
                                 </p>
                                 <div className="flex items-center gap-1 mt-0.5 flex-wrap">
                                   {c.fontes.slice(0, 2).map((f) => (
@@ -1655,8 +1659,8 @@ export default function MarketingPage() {
                                     style={{ background: `${BLUE}20`, color: BLUE_L }}>aberto ↗</span>}
                                 </p>
                                 <p className="text-[10px] text-text-dim mt-0.5 capitalize truncate"
-                                  title={`${m.utm_source} · ${CAMPAIGN_LABELS[m.utm_campaign || ''] || m.utm_campaign}`}>
-                                  {m.utm_source} · {CAMPAIGN_LABELS[m.utm_campaign || ''] || m.utm_campaign}
+                                  title={`${m.utm_source} · ${campLabel(m.utm_campaign || '')}`}>
+                                  {m.utm_source} · {campLabel(m.utm_campaign || '')}
                                 </p>
                               </div>
                             </div>
@@ -1865,7 +1869,7 @@ export default function MarketingPage() {
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between gap-3 mb-1">
-                          <p className="font-bold text-text-bright">{CAMPAIGN_LABELS[c.campanha] || c.campanha}</p>
+                          <p className="font-bold text-text-bright">{campLabel(c.campanha)}</p>
                           <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold"
                             style={{ background: recCfg.bg, color: recCfg.color }}>
                             <RecIcon size={13} />
