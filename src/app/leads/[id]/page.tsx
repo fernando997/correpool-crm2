@@ -104,6 +104,87 @@ function TemperaturaReuniaoModal({ onConfirm, onCancel }: {
   )
 }
 
+// ── Modal de Follow-up ────────────────────────────────────────────────────────
+function FollowUpModal({ lead, onConfirm, onCancel }: {
+  lead: Lead
+  onConfirm: (date: string) => void
+  onCancel: () => void
+}) {
+  const todayStr = new Date().toISOString().split('T')[0]
+  const [date, setDate] = useState(lead.proximo_contato || '')
+
+  function addDays(d: number) {
+    const dt = new Date()
+    dt.setDate(dt.getDate() + d)
+    return dt.toISOString().split('T')[0]
+  }
+
+  const quickOptions = [
+    { label: 'Amanhã', days: 1 },
+    { label: '3 dias', days: 3 },
+    { label: '7 dias', days: 7 },
+    { label: '15 dias', days: 15 },
+  ]
+
+  return (
+    <div className="fixed inset-0 flex items-center justify-center z-50 p-4"
+      style={{ background: 'rgba(31,45,61,0.5)', backdropFilter: 'blur(4px)' }}>
+      <div className="w-full max-w-sm rounded-2xl shadow-2xl overflow-hidden" style={{ background: '#FFFFFF' }}>
+        <div className="flex items-center justify-between px-6 py-4" style={{ borderBottom: '1px solid #E0E6ED' }}>
+          <h2 className="text-base font-semibold text-[#1F2D3D] flex items-center gap-2">
+            <CalendarClock size={18} className="text-orange-500" />
+            Agendar Follow-up
+          </h2>
+          <button onClick={onCancel} className="w-7 h-7 rounded-lg flex items-center justify-center hover:bg-[#F5F7FA] text-[#6B7C93] transition-colors">
+            <X size={16} />
+          </button>
+        </div>
+        <div className="px-6 py-5 space-y-4">
+          <p className="text-sm text-[#6B7C93]">
+            Quando retomar contato com <strong className="text-[#1F2D3D]">{lead.nome}</strong>?
+          </p>
+          <div className="grid grid-cols-4 gap-2">
+            {quickOptions.map(({ label, days }) => {
+              const val = addDays(days)
+              return (
+                <button key={days} onClick={() => setDate(val)}
+                  className="py-2 rounded-lg text-xs font-medium border transition-all"
+                  style={date === val
+                    ? { background: 'rgba(249,115,22,0.15)', borderColor: 'rgba(249,115,22,0.5)', color: '#F97316' }
+                    : { background: '#F5F7FA', borderColor: '#E0E6ED', color: '#6B7C93' }}>
+                  {label}
+                </button>
+              )
+            })}
+          </div>
+          <div>
+            <label className="text-xs font-semibold text-[#6B7C93] block mb-1.5">Ou escolha a data</label>
+            <input type="date" className="input" value={date} min={todayStr}
+              onChange={(e) => setDate(e.target.value)} />
+          </div>
+          <div className="flex gap-2 pt-1">
+            {lead.proximo_contato && (
+              <button onClick={() => onConfirm('')}
+                className="px-3 py-2 rounded-lg text-xs font-medium transition-colors"
+                style={{ color: '#EF4444', border: '1px solid rgba(239,68,68,0.3)' }}
+                onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(239,68,68,0.08)'}
+                onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}>
+                Remover
+              </button>
+            )}
+            <button onClick={onCancel} className="btn-secondary flex-1 text-sm">Cancelar</button>
+            <button onClick={() => date && onConfirm(date)} disabled={!date}
+              className="flex-1 text-sm px-4 py-2 rounded-lg font-semibold transition-colors"
+              style={{ background: date ? '#F97316' : '#E0E6ED', color: date ? '#fff' : '#A0AEC0', cursor: date ? 'pointer' : 'not-allowed' }}>
+              Confirmar
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Modal de declínio ─────────────────────────────────────────────────────────
 function DeclineModal({ onConfirm, onCancel }: {
   onConfirm: (motivo: MotivoPerdaType) => void
@@ -286,8 +367,9 @@ function LeadDetailContent({ lead }: { lead: Lead }) {
   const [editingAnotacaoText, setEditingAnotacaoText] = useState('')
   const [editing, setEditing]               = useState(false)
   const [editForm, setEditForm]             = useState<Lead>(lead)
-  const [showSchedule, setShowSchedule]     = useState(false)
-  const [isRescheduling, setIsRescheduling] = useState(false)
+  const [showFollowUpModal, setShowFollowUpModal] = useState(false)
+  const [showSchedule, setShowSchedule]           = useState(false)
+  const [isRescheduling, setIsRescheduling]       = useState(false)
   const [scheduleForm, setScheduleForm]     = useState({ data: '', hora: '', link: '' })
   const [showDeclineModal, setShowDeclineModal]   = useState(false)
   const [showTempModal, setShowTempModal]         = useState(false)
@@ -796,37 +878,44 @@ function LeadDetailContent({ lead }: { lead: Lead }) {
             </div>
 
             {/* Próximo Follow-up */}
-            {(() => {
-              const pc = lead.proximo_contato
-              if (!pc) return null
-              const todayStr = new Date().toISOString().split('T')[0]
-              const isPast  = pc < todayStr
-              const isToday = pc === todayStr
-              const color   = isPast ? '#B91C1C' : isToday ? '#C2410C' : '#0369A1'
-              const bg      = isPast ? '#FEF2F2' : isToday ? '#FFF7ED' : '#EFF6FF'
-              const border  = isPast ? '#FECACA' : isToday ? '#FED7AA' : '#BFDBFE'
-              const [y, m, d] = pc.split('-')
-              const formatted = `${d}/${m}/${y}`
-              return (
-                <div className="rounded-xl p-4" style={{ background: bg, border: `1px solid ${border}` }}>
-                  <div className="flex items-center gap-2 mb-1">
-                    <CalendarClock size={14} style={{ color }} />
-                    <h3 className="text-sm font-bold" style={{ color }}>Próximo Follow-up</h3>
-                    {isPast && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full" style={{ background: '#FECACA', color: '#B91C1C' }}>ATRASADO</span>}
-                    {isToday && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full" style={{ background: '#FED7AA', color: '#C2410C' }}>HOJE</span>}
+            <div className="rounded-xl p-4" style={{ background: '#FFFFFF', border: '1px solid #E0E6ED' }}>
+              <div className="flex items-center gap-2 mb-3">
+                <div className="w-1 h-4 rounded-full" style={{ background: '#F97316' }} />
+                <h3 className="text-sm font-bold text-[#1F2D3D] flex items-center gap-1.5">
+                  <CalendarClock size={14} className="text-orange-500" /> Próximo Follow-up
+                </h3>
+              </div>
+              {lead.proximo_contato ? (() => {
+                const pc = lead.proximo_contato
+                const todayStr = new Date().toISOString().split('T')[0]
+                const isPast  = pc < todayStr
+                const isToday = pc === todayStr
+                const color   = isPast ? '#B91C1C' : isToday ? '#C2410C' : '#0369A1'
+                const bg      = isPast ? '#FEF2F2' : isToday ? '#FFF7ED' : '#EFF6FF'
+                const border  = isPast ? '#FECACA' : isToday ? '#FED7AA' : '#BFDBFE'
+                const [y, m, d] = pc.split('-')
+                return (
+                  <div className="rounded-lg p-3 mb-2" style={{ background: bg, border: `1px solid ${border}` }}>
+                    <div className="flex items-center gap-1.5 mb-1">
+                      {isPast && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full" style={{ background: '#FECACA', color: '#B91C1C' }}>ATRASADO</span>}
+                      {isToday && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full" style={{ background: '#FED7AA', color: '#C2410C' }}>HOJE</span>}
+                    </div>
+                    <p className="text-xl font-extrabold" style={{ color }}>{`${d}/${m}/${y}`}</p>
                   </div>
-                  <p className="text-xl font-extrabold" style={{ color }}>{formatted}</p>
-                  <button
-                    onClick={() => updateLead(lead.id, { proximo_contato: undefined })}
-                    className="text-[10px] mt-2 font-medium transition-colors"
-                    style={{ color: '#A0AEC0' }}
-                    onMouseEnter={(e) => { e.currentTarget.style.color = '#B91C1C' }}
-                    onMouseLeave={(e) => { e.currentTarget.style.color = '#A0AEC0' }}>
-                    Remover agendamento
-                  </button>
-                </div>
-              )
-            })()}
+                )
+              })() : (
+                <p className="text-xs text-[#A0AEC0] mb-2">Nenhum follow-up agendado.</p>
+              )}
+              <button
+                onClick={() => setShowFollowUpModal(true)}
+                className="w-full text-xs py-2 rounded-lg font-semibold transition-colors border flex items-center justify-center gap-1.5"
+                style={{ background: '#FFF7ED', color: '#C2410C', borderColor: '#FED7AA' }}
+                onMouseEnter={(e) => e.currentTarget.style.background = '#FFEDD5'}
+                onMouseLeave={(e) => e.currentTarget.style.background = '#FFF7ED'}>
+                <CalendarClock size={13} />
+                {lead.proximo_contato ? 'Reagendar Follow-up' : 'Agendar Follow-up'}
+              </button>
+            </div>
 
             {/* Temperatura */}
             <div className="rounded-xl p-4" style={{ background: '#FFFFFF', border: '1px solid #E0E6ED' }}>
@@ -1035,6 +1124,7 @@ function LeadDetailContent({ lead }: { lead: Lead }) {
           </div>
         </div>
       )}
+      {showFollowUpModal && <FollowUpModal lead={lead} onConfirm={(date) => { updateLead(lead.id, { proximo_contato: date || undefined }); setShowFollowUpModal(false) }} onCancel={() => setShowFollowUpModal(false)} />}
       {showTempModal && <TemperaturaReuniaoModal onConfirm={(temp) => { moveLead(lead.id, 'reuniao_realizada', { temperatura: temp }); setShowTempModal(false) }} onCancel={() => setShowTempModal(false)} />}
       {showDeclineModal && <DeclineModal onConfirm={(motivo) => {
         const temp: Temperatura = MOTIVOS_DESQUALIFICANTES.has(motivo) ? 'desqualificado' : lead.temperatura
