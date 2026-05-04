@@ -66,6 +66,7 @@ type SortKey =
   | 'taxa_conversao' | 'vendas' | 'receita_total' | 'ticket_medio' | 'score'
   | 'desqualificados' | 'taxa_desqualificacao'
 type SortDir = 'asc' | 'desc'
+type CampSortKey = 'campanha' | 'total_leads' | 'taxa_agendamento' | 'taxa_conversao' | 'vendas' | 'receita_total' | 'ticket_medio' | 'score' | 'desqualificados' | 'taxa_desq'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function ChartTooltip({ active, payload, label }: any) {
@@ -694,6 +695,10 @@ export default function MarketingPage() {
   const [sortDir, setSortDir]       = useState<SortDir>('desc')
   const [selectedCriativo, setSelectedCriativo] = useState<string | null>(null)
   const [expandedCampanhas, setExpandedCampanhas] = useState<Set<string>>(new Set())
+  const [campSortKey, setCampSortKey] = useState<CampSortKey>('score')
+  const [campSortDir, setCampSortDir] = useState<SortDir>('desc')
+  const [crSubSortKey, setCrSubSortKey] = useState<SortKey>('score')
+  const [crSubSortDir, setCrSubSortDir] = useState<SortDir>('desc')
 
   // ── Filtro por período ─────────────────────────────────────────────────────
   const maxDate = useMemo(() => {
@@ -790,6 +795,34 @@ export default function MarketingPage() {
       else next.add(camp)
       return next
     })
+  }
+
+  const sortedCampanhas = useMemo(() => {
+    return [...campanhas].sort((a, b) => {
+      if (campSortKey === 'campanha') {
+        const la = CAMPAIGN_LABELS[a.campanha] || a.campanha
+        const lb = CAMPAIGN_LABELS[b.campanha] || b.campanha
+        return campSortDir === 'asc' ? la.localeCompare(lb) : lb.localeCompare(la)
+      }
+      if (campSortKey === 'taxa_desq') {
+        const va = a.total_leads > 0 ? (a.desqualificados / a.total_leads) * 100 : 0
+        const vb = b.total_leads > 0 ? (b.desqualificados / b.total_leads) * 100 : 0
+        return campSortDir === 'asc' ? va - vb : vb - va
+      }
+      const va = (a as unknown as Record<string, number>)[campSortKey] ?? 0
+      const vb = (b as unknown as Record<string, number>)[campSortKey] ?? 0
+      return campSortDir === 'asc' ? va - vb : vb - va
+    })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [campanhas, campSortKey, campSortDir])
+
+  function handleCampSort(key: CampSortKey) {
+    if (key === campSortKey) setCampSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))
+    else { setCampSortKey(key); setCampSortDir('desc') }
+  }
+  function handleCrSubSort(key: SortKey) {
+    if (key === crSubSortKey) setCrSubSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))
+    else { setCrSubSortKey(key); setCrSubSortDir('desc') }
   }
 
   // ── Download CSVs ──────────────────────────────────────────────────────────
@@ -1096,12 +1129,12 @@ export default function MarketingPage() {
               })()}
             </div>
 
-            {/* ── Tabela de Campanhas (expandível) ─────────────────────── */}
+            {/* ── Tabela de Campanhas (expandível + ordenável) ─────────── */}
             <div className="card overflow-hidden">
               <div className="flex items-center justify-between px-6 py-4" style={{ borderBottom: '1px solid #E0E6ED' }}>
                 <div>
                   <h3 className="section-title">Todas as Campanhas</h3>
-                  <p className="text-xs text-text-muted mt-0.5">Clique em uma linha para expandir e ver os criativos</p>
+                  <p className="text-xs text-text-muted mt-0.5">Clique nos cabeçalhos para ordenar · Clique na linha para ver criativos</p>
                 </div>
                 <button onClick={exportCampanhas} className="btn-secondary flex items-center gap-1.5 text-xs py-1.5 px-3">
                   <Download size={13} />
@@ -1113,27 +1146,34 @@ export default function MarketingPage() {
                   <thead>
                     <tr style={{ borderBottom: '1px solid #E0E6ED', background: '#F5F7FA' }}>
                       {([
-                        { label: 'Campanha',    w: 220 },
-                        { label: 'Leads' },
-                        { label: '% Agend.' },
-                        { label: '% Conv.' },
-                        { label: 'Vendas' },
-                        { label: 'Receita' },
-                        { label: 'Ticket Médio' },
-                        { label: 'Score' },
-                        { label: 'Desqual.' },
-                        { label: '% Desqual.' },
-                        { label: 'Recom.' },
-                        { label: '' },
-                      ] as { label: string; w?: number }[]).map(({ label, w }) => (
-                        <th key={label || 'action'} style={{ width: w, padding: '12px 16px', textAlign: 'left' }}>
-                          <span className="text-[10px] font-bold uppercase tracking-widest text-text-muted">{label}</span>
+                        { key: 'campanha'         as CampSortKey, label: 'Campanha',   w: 220 },
+                        { key: 'total_leads'      as CampSortKey, label: 'Leads' },
+                        { key: 'taxa_agendamento' as CampSortKey, label: '% Agend.' },
+                        { key: 'taxa_conversao'   as CampSortKey, label: '% Conv.' },
+                        { key: 'vendas'           as CampSortKey, label: 'Vendas' },
+                        { key: 'receita_total'    as CampSortKey, label: 'Receita' },
+                        { key: 'ticket_medio'     as CampSortKey, label: 'Ticket' },
+                        { key: 'score'            as CampSortKey, label: 'Score' },
+                        { key: 'desqualificados'  as CampSortKey, label: 'Desqual.' },
+                        { key: 'taxa_desq'        as CampSortKey, label: '% Desqual.' },
+                      ] as { key: CampSortKey; label: string; w?: number }[]).map(({ key, label, w }) => (
+                        <th key={key} style={{ width: w, padding: '12px 16px', textAlign: 'left', cursor: 'pointer' }}
+                          onClick={() => handleCampSort(key)}
+                          className="hover:bg-elevated transition-colors select-none">
+                          <div className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-widest text-text-muted">
+                            {label}
+                            <SortIcon active={campSortKey === key} dir={campSortDir} />
+                          </div>
                         </th>
                       ))}
+                      <th style={{ padding: '12px 16px', textAlign: 'left' }}>
+                        <span className="text-[10px] font-bold uppercase tracking-widest text-text-muted">Recom.</span>
+                      </th>
+                      <th style={{ width: 44 }} />
                     </tr>
                   </thead>
                   <tbody>
-                    {[...campanhas].sort((a, b) => b.score - a.score).flatMap((c, idx) => {
+                    {sortedCampanhas.flatMap((c, idx) => {
                       const isExpanded = expandedCampanhas.has(c.campanha)
                       const taxa_desq = c.total_leads > 0 ? (c.desqualificados / c.total_leads) * 100 : 0
                       const rec = getRecomendacao(c.taxa_conversao, c.ticket_medio, c.taxa_agendamento)
@@ -1144,8 +1184,23 @@ export default function MarketingPage() {
                         filteredLeads.filter((l) => l.utm_campaign === c.campanha)
                       )
                       const maxCrScore = Math.max(...campCriativos.map((cr) => cr.score), 1)
-                      const maxDesqTaxa = Math.max(...campanhas.filter((x) => x.total_leads >= 3).map((x) => x.total_leads > 0 ? (x.desqualificados / x.total_leads) * 100 : 0), 0)
-                      const isBestConv = idx === 0
+                      const sortedCampCriativos = [...campCriativos].sort((a, b) => {
+                        if (crSubSortKey === 'utm_content') {
+                          const la = CRIATIVO_LABELS[a.utm_content] || a.utm_content
+                          const lb = CRIATIVO_LABELS[b.utm_content] || b.utm_content
+                          return crSubSortDir === 'asc' ? la.localeCompare(lb) : lb.localeCompare(la)
+                        }
+                        const va = (a as unknown as Record<string, number>)[crSubSortKey] ?? 0
+                        const vb = (b as unknown as Record<string, number>)[crSubSortKey] ?? 0
+                        return crSubSortDir === 'asc' ? va - vb : vb - va
+                      })
+                      const bestConvCamp = [...campanhas].sort((a, b) => b.taxa_conversao - a.taxa_conversao)[0]?.campanha
+                      const maxDesqTaxa = Math.max(
+                        ...campanhas.filter((x) => x.total_leads >= 3)
+                          .map((x) => x.total_leads > 0 ? (x.desqualificados / x.total_leads) * 100 : 0),
+                        0
+                      )
+                      const isBestConv = c.campanha === bestConvCamp
                       const isMostDesq = c.total_leads >= 3 && taxa_desq > 0 && taxa_desq === maxDesqTaxa
 
                       const mainRow = (
@@ -1213,10 +1268,7 @@ export default function MarketingPage() {
                             </span>
                           </td>
                           <td style={{ padding: '14px 16px' }}>
-                            <PercentBar
-                              value={taxa_desq}
-                              color={taxa_desq >= 30 ? RED : taxa_desq >= 15 ? AMBER : GREEN_L}
-                            />
+                            <PercentBar value={taxa_desq} color={taxa_desq >= 30 ? RED : taxa_desq >= 15 ? AMBER : GREEN_L} />
                           </td>
                           <td style={{ padding: '14px 16px' }}>
                             <span className="flex items-center gap-1 text-[10px] font-bold px-2 py-1 rounded-lg whitespace-nowrap"
@@ -1240,101 +1292,148 @@ export default function MarketingPage() {
                       const expandedRow = (
                         <tr key={`${c.campanha}-criativos`} style={{ borderBottom: '1px solid #EEF1F5' }}>
                           <td colSpan={12} style={{ padding: 0, background: '#F8FAFF' }}>
-                            <div style={{ borderLeft: `3px solid ${color}30`, marginLeft: 0 }}>
+                            <div style={{ borderLeft: `4px solid ${color}40` }}>
                               {campCriativos.length === 0 ? (
                                 <div className="px-8 py-4 text-xs text-text-dim italic">
                                   Nenhum criativo vinculado a esta campanha.
                                 </div>
                               ) : (
-                                <div className="py-3 px-6">
-                                  <p className="text-[10px] font-bold uppercase tracking-widest text-text-muted mb-2">
-                                    Criativos da campanha · {campCriativos.length} criativo{campCriativos.length !== 1 ? 's' : ''}
-                                  </p>
-                                  <table className="w-full text-sm">
-                                    <thead>
-                                      <tr style={{ background: '#EEF3FA', borderRadius: 8 }}>
-                                        {['Criativo','Leads','% Agend.','% Conv.','Vendas','Receita','Ticket','Score','Desqual.','% Desqual.',''].map((h) => (
-                                          <th key={h || 'act'} style={{ padding: '8px 12px', textAlign: 'left' }}>
-                                            <span className="text-[9px] font-bold uppercase tracking-widest text-text-muted">{h}</span>
-                                          </th>
-                                        ))}
-                                      </tr>
-                                    </thead>
-                                    <tbody>
-                                      {campCriativos.map((cr, cIdx) => {
-                                        const crTaxaDesq = cr.total_leads > 0 ? (cr.desqualificados / cr.total_leads) * 100 : 0
-                                        const isCrBest  = cIdx === 0
-                                        const isCrWorst = cIdx === campCriativos.length - 1 && campCriativos.length > 1
-                                        return (
-                                          <tr
-                                            key={cr.utm_content}
-                                            onClick={(e) => { e.stopPropagation(); setSelectedCriativo(cr.utm_content) }}
-                                            style={{
-                                              borderBottom: '1px solid #E4EAF5',
-                                              cursor: 'pointer',
-                                              background: isCrBest ? 'rgba(5,150,105,0.04)' : isCrWorst ? 'rgba(220,38,38,0.03)' : 'transparent',
-                                            }}
-                                            className="hover:bg-elevated transition-colors"
-                                          >
-                                            <td style={{ padding: '10px 12px', maxWidth: 180 }}>
-                                              <div className="flex items-center gap-1.5 min-w-0">
-                                                {isCrBest  && <Trophy        size={10} style={{ color: GREEN_L, flexShrink: 0 }} />}
-                                                {isCrWorst && <AlertTriangle size={10} style={{ color: RED,     flexShrink: 0 }} />}
-                                                <span className="text-xs font-semibold text-text-primary truncate">
+                                <div className="py-4 px-6">
+
+                                  {/* Sort + count bar */}
+                                  <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+                                    <div className="flex items-center gap-2">
+                                      <div className="w-1.5 h-4 rounded-full flex-shrink-0" style={{ background: color }} />
+                                      <p className="text-xs font-bold text-text-primary">
+                                        {campCriativos.length} criativo{campCriativos.length !== 1 ? 's' : ''}
+                                      </p>
+                                    </div>
+                                    <div className="flex items-center gap-1.5 flex-wrap">
+                                      <span className="text-[9px] text-text-dim font-semibold uppercase tracking-wide">Ordenar:</span>
+                                      {([
+                                        { key: 'score'                as SortKey, label: 'Score' },
+                                        { key: 'total_leads'          as SortKey, label: 'Leads' },
+                                        { key: 'taxa_conversao'       as SortKey, label: 'Conv.' },
+                                        { key: 'receita_total'        as SortKey, label: 'Receita' },
+                                        { key: 'taxa_desqualificacao' as SortKey, label: 'Desqual.' },
+                                        { key: 'utm_content'          as SortKey, label: 'Nome' },
+                                      ]).map(({ key, label }) => (
+                                        <button
+                                          key={key}
+                                          onClick={(e) => { e.stopPropagation(); handleCrSubSort(key) }}
+                                          className="flex items-center gap-0.5 px-2 py-1 rounded-md text-[10px] font-semibold transition-all select-none"
+                                          style={crSubSortKey === key
+                                            ? { background: `${BLUE_L}20`, color: BLUE_L, border: `1px solid ${BLUE_L}40` }
+                                            : { background: '#EEF1F5', color: '#6B7C93', border: '1px solid #E0E6ED' }}>
+                                          {label}
+                                          {crSubSortKey === key && (
+                                            crSubSortDir === 'asc'
+                                              ? <ChevronUp size={9} style={{ flexShrink: 0 }} />
+                                              : <ChevronDown size={9} style={{ flexShrink: 0 }} />
+                                          )}
+                                        </button>
+                                      ))}
+                                    </div>
+                                  </div>
+
+                                  {/* Cards grid */}
+                                  <div className={cn('grid gap-3',
+                                    sortedCampCriativos.length === 1 ? 'grid-cols-1 max-w-sm' :
+                                    sortedCampCriativos.length <= 4 ? 'grid-cols-2' : 'grid-cols-3')}>
+                                    {sortedCampCriativos.map((cr, cIdx) => {
+                                      const crTaxaDesq = cr.total_leads > 0 ? (cr.desqualificados / cr.total_leads) * 100 : 0
+                                      const isCrBest  = cIdx === 0
+                                      const isCrWorst = cIdx === sortedCampCriativos.length - 1 && sortedCampCriativos.length > 1
+                                      const convColor = cr.taxa_conversao >= 15 ? GREEN_L : cr.taxa_conversao >= 5 ? AMBER : RED
+                                      const desqColor = crTaxaDesq >= 30 ? RED : crTaxaDesq >= 15 ? AMBER : GREEN_L
+                                      return (
+                                        <div
+                                          key={cr.utm_content}
+                                          onClick={(e) => { e.stopPropagation(); setSelectedCriativo(cr.utm_content) }}
+                                          className="rounded-xl p-4 cursor-pointer transition-all"
+                                          style={{
+                                            background: isCrBest ? 'rgba(5,150,105,0.05)' : isCrWorst ? 'rgba(220,38,38,0.03)' : '#FFFFFF',
+                                            border: `1px solid ${isCrBest ? '#86EFAC' : isCrWorst ? '#FECACA' : '#E0E6ED'}`,
+                                            boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
+                                          }}
+                                          onMouseEnter={(e) => { e.currentTarget.style.boxShadow = '0 4px 14px rgba(0,0,0,0.09)'; e.currentTarget.style.transform = 'translateY(-1px)' }}
+                                          onMouseLeave={(e) => { e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,0.04)'; e.currentTarget.style.transform = 'none' }}
+                                        >
+                                          {/* Card header */}
+                                          <div className="flex items-start justify-between gap-2 mb-3">
+                                            <div className="flex-1 min-w-0">
+                                              <div className="flex items-center gap-1.5 mb-1.5">
+                                                {isCrBest  && <Trophy        size={11} style={{ color: GREEN_L, flexShrink: 0 }} />}
+                                                {isCrWorst && <AlertTriangle size={11} style={{ color: RED,     flexShrink: 0 }} />}
+                                                <p className="text-xs font-bold text-[#1F2D3D] truncate leading-tight">
                                                   {CRIATIVO_LABELS[cr.utm_content] || cr.utm_content}
-                                                </span>
+                                                </p>
                                               </div>
-                                            </td>
-                                            <td style={{ padding: '10px 12px' }}>
-                                              <span className="text-xs font-bold text-text-bright">{cr.total_leads}</span>
-                                            </td>
-                                            <td style={{ padding: '10px 12px' }}>
-                                              <PercentBar value={cr.taxa_agendamento} color={SKY} />
-                                            </td>
-                                            <td style={{ padding: '10px 12px' }}>
-                                              <span className="text-xs font-bold"
-                                                style={{ color: cr.taxa_conversao >= 15 ? GREEN_L : cr.taxa_conversao >= 5 ? AMBER : RED }}>
-                                                {cr.taxa_conversao.toFixed(1)}%
-                                              </span>
-                                            </td>
-                                            <td style={{ padding: '10px 12px' }}>
-                                              <span className="text-xs font-bold text-text-bright">{cr.vendas}</span>
-                                            </td>
-                                            <td style={{ padding: '10px 12px' }}>
-                                              <span className="text-xs font-bold" style={{ color: cr.receita_total > 0 ? GREEN_L : '#3d5a7a' }}>
-                                                {formatCurrency(cr.receita_total)}
-                                              </span>
-                                            </td>
-                                            <td style={{ padding: '10px 12px' }}>
-                                              <span className="text-[10px] font-semibold" style={{ color: cr.ticket_medio > 0 ? SKY : '#3d5a7a' }}>
+                                              {cr.utm_source && (
+                                                <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full capitalize"
+                                                  style={{ background: `${SOURCE_COLORS[cr.utm_source] || BLUE}15`, color: SOURCE_COLORS[cr.utm_source] || BLUE }}>
+                                                  {cr.utm_source}
+                                                </span>
+                                              )}
+                                            </div>
+                                            <div className="flex-shrink-0">
+                                              <ScoreRing score={cr.score} max={maxCrScore} />
+                                            </div>
+                                          </div>
+
+                                          {/* Primary metrics */}
+                                          <div className="grid grid-cols-4 gap-1 mb-3">
+                                            {[
+                                              { label: 'Leads',   value: String(cr.total_leads),              color: BLUE_L   },
+                                              { label: 'Conv.',   value: `${cr.taxa_conversao.toFixed(0)}%`,  color: convColor },
+                                              { label: 'Vendas',  value: String(cr.vendas),                  color: GREEN_L  },
+                                              { label: 'Receita', value: formatCurrency(cr.receita_total),    color: GREEN    },
+                                            ].map((m) => (
+                                              <div key={m.label} className="rounded-lg p-1.5 text-center" style={{ background: '#F5F7FA', border: '1px solid #E8EDF5' }}>
+                                                <p className="text-[8px] font-bold uppercase tracking-wide text-[#A0AEC0]">{m.label}</p>
+                                                <p className="text-[11px] font-extrabold mt-0.5 truncate" style={{ color: m.color }}>{m.value}</p>
+                                              </div>
+                                            ))}
+                                          </div>
+
+                                          {/* Mini progress bars */}
+                                          <div className="space-y-1.5 mb-3">
+                                            <div>
+                                              <div className="flex justify-between text-[9px] mb-0.5">
+                                                <span style={{ color: '#A0AEC0' }}>Agendamento</span>
+                                                <span className="font-semibold" style={{ color: SKY }}>{cr.taxa_agendamento.toFixed(0)}%</span>
+                                              </div>
+                                              <div className="w-full h-1.5 rounded-full" style={{ background: '#E0E6ED' }}>
+                                                <div className="h-1.5 rounded-full transition-all" style={{ width: `${Math.min(cr.taxa_agendamento, 100)}%`, background: SKY }} />
+                                              </div>
+                                            </div>
+                                            <div>
+                                              <div className="flex justify-between text-[9px] mb-0.5">
+                                                <span style={{ color: '#A0AEC0' }}>Desqualif. ({cr.desqualificados})</span>
+                                                <span className="font-semibold" style={{ color: desqColor }}>{crTaxaDesq.toFixed(0)}%</span>
+                                              </div>
+                                              <div className="w-full h-1.5 rounded-full" style={{ background: '#E0E6ED' }}>
+                                                <div className="h-1.5 rounded-full transition-all" style={{ width: `${Math.min(crTaxaDesq, 100)}%`, background: desqColor }} />
+                                              </div>
+                                            </div>
+                                          </div>
+
+                                          {/* Footer */}
+                                          <div className="flex items-center justify-between pt-2.5" style={{ borderTop: '1px solid #E8EDF5' }}>
+                                            <span className="text-[9px] text-[#A0AEC0]">
+                                              Ticket: <span className="font-semibold" style={{ color: cr.ticket_medio > 0 ? SKY : '#A0AEC0' }}>
                                                 {cr.ticket_medio > 0 ? formatCurrency(cr.ticket_medio) : '—'}
                                               </span>
-                                            </td>
-                                            <td style={{ padding: '10px 12px' }}>
-                                              <ScoreRing score={cr.score} max={maxCrScore} />
-                                            </td>
-                                            <td style={{ padding: '10px 12px' }}>
-                                              <span className="text-xs font-bold" style={{ color: cr.desqualificados > 0 ? RED : '#3d5a7a' }}>
-                                                {cr.desqualificados}
-                                              </span>
-                                            </td>
-                                            <td style={{ padding: '10px 12px' }}>
-                                              <PercentBar
-                                                value={crTaxaDesq}
-                                                color={crTaxaDesq >= 30 ? RED : crTaxaDesq >= 15 ? AMBER : GREEN_L}
-                                              />
-                                            </td>
-                                            <td style={{ padding: '10px 12px' }}>
-                                              <span className="text-[9px] font-semibold px-2 py-1 rounded-full whitespace-nowrap"
-                                                style={{ background: `${BLUE_L}15`, color: BLUE_L }}>
-                                                Ver detalhes ↗
-                                              </span>
-                                            </td>
-                                          </tr>
-                                        )
-                                      })}
-                                    </tbody>
-                                  </table>
+                                            </span>
+                                            <span className="text-[9px] font-bold px-2 py-0.5 rounded-full"
+                                              style={{ background: `${BLUE_L}15`, color: BLUE_L }}>
+                                              Ver detalhes ↗
+                                            </span>
+                                          </div>
+                                        </div>
+                                      )
+                                    })}
+                                  </div>
                                 </div>
                               )}
                             </div>
