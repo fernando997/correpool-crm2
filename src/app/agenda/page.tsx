@@ -25,7 +25,7 @@ export default function AgendaPage() {
   const router = useRouter()
 
   const now = new Date()
-  const todayStr = now.toISOString().split('T')[0]
+  const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
   const [activeTab, setActiveTab] = useState<'reunioes' | 'followups'>('followups')
   const [viewMonth, setViewMonth] = useState(now.getMonth())
   const [viewYear, setViewYear] = useState(now.getFullYear())
@@ -53,11 +53,10 @@ export default function AgendaPage() {
   const reunioesByDay: Record<number, typeof filteredReunioes> = {}
   filteredReunioes.forEach((l) => {
     if (!l.data_reuniao) return
-    const d = new Date(l.data_reuniao)
-    if (d.getMonth() === viewMonth && d.getFullYear() === viewYear) {
-      const day = d.getDate()
-      if (!reunioesByDay[day]) reunioesByDay[day] = []
-      reunioesByDay[day].push(l)
+    const [y, m, d] = l.data_reuniao.split('-').map(Number)
+    if (m - 1 === viewMonth && y === viewYear) {
+      if (!reunioesByDay[d]) reunioesByDay[d] = []
+      reunioesByDay[d].push(l)
     }
   })
 
