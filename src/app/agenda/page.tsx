@@ -61,7 +61,14 @@ export default function AgendaPage() {
   })
 
   const upcoming = [...filteredReunioes]
-    .filter((l) => l.data_reuniao)
+    .filter((l) => {
+      if (!l.data_reuniao) return false
+      if (selectedDay) {
+        const [y, m, d] = l.data_reuniao.split('-').map(Number)
+        return d === selectedDay && m - 1 === viewMonth && y === viewYear
+      }
+      return true
+    })
     .sort((a, b) => (a.data_reuniao! + (a.hora_reuniao || '')).localeCompare(b.data_reuniao! + (b.hora_reuniao || '')))
 
   const selectedDayReunioes = selectedDay ? (reunioesByDay[selectedDay] || []) : []
@@ -345,10 +352,27 @@ export default function AgendaPage() {
 
             {/* Upcoming meetings list */}
             <div className="card p-5">
-              <h3 className="text-sm font-semibold text-[#374151] mb-4">Proximas Reunioes</h3>
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-sm font-semibold text-[#374151]">
+                  {selectedDay
+                    ? `${selectedDay} de ${MONTHS[viewMonth]}`
+                    : 'Proximas Reunioes'}
+                </h3>
+                {selectedDay && (
+                  <button onClick={() => setSelectedDay(null)}
+                    className="text-[10px] font-medium px-2 py-1 rounded-lg transition-colors"
+                    style={{ background: '#EFF6FF', color: '#2563EB' }}
+                    onMouseEnter={(e) => e.currentTarget.style.background = '#DBEAFE'}
+                    onMouseLeave={(e) => e.currentTarget.style.background = '#EFF6FF'}>
+                    Ver todas
+                  </button>
+                )}
+              </div>
               <div className="space-y-3 overflow-y-auto max-h-[600px]">
                 {upcoming.length === 0 && (
-                  <p className="text-sm text-[#A0AEC0] text-center py-6">Nenhuma reuniao agendada.</p>
+                  <p className="text-sm text-[#A0AEC0] text-center py-6">
+                    {selectedDay ? 'Nenhuma reuniao neste dia.' : 'Nenhuma reuniao agendada.'}
+                  </p>
                 )}
                 {upcoming.map((l) => {
                   const vendedor = users.find((u) => u.id === l.vendedor_id)
