@@ -449,7 +449,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           }
           setHistorico((h) => [...h, entry])
 
-          // Salva no banco (fire-and-forget com log de erro)
+          // Salva no banco: tenta update completo; se falhar por coluna inexistente,
+          // garante pelo menos o status_funil com campos mínimos conhecidos
           supabase.from('leads').update({
             ...extra,
             status_funil: newStatus,
@@ -458,7 +459,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             tempo_resposta_segundos,
             score_lead: updated.score_lead,
           }).eq('id', id).then(({ error }) => {
-            if (error) console.error('[moveLead] leads update error:', error.message)
+            if (error) {
+              console.warn('[moveLead] full update failed, retrying with minimal fields:', error.message)
+              supabase.from('leads').update({
+                status_funil: newStatus,
+                ultima_interacao_em: now,
+              }).eq('id', id).then(({ error: e2 }) => {
+                if (e2) console.error('[moveLead] minimal update also failed:', e2.message)
+              })
+            }
           })
           supabase.from('historico_movimentacoes').insert(entry).then(({ error }) => {
             if (error) console.error('[moveLead] historico insert error:', error.message)
