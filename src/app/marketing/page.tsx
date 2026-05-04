@@ -1220,7 +1220,7 @@ export default function MarketingPage() {
                               {isBestConv && <Trophy size={12} style={{ color: GREEN_L, flexShrink: 0 }} />}
                               {isMostDesq && <AlertTriangle size={12} style={{ color: RED, flexShrink: 0 }} />}
                               <div className="min-w-0">
-                                <p className="text-xs font-semibold text-text-primary truncate">
+                                <p className="text-xs font-semibold text-text-primary leading-snug">
                                   {CAMPAIGN_LABELS[c.campanha] || c.campanha}
                                 </p>
                                 <div className="flex items-center gap-1 mt-0.5 flex-wrap">
