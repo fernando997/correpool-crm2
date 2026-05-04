@@ -170,6 +170,13 @@ export const FUNIL_LABELS: Record<StatusFunil, string> = {
   declinado: 'Declinados',
 }
 
+// Motivos que desqualificam permanentemente — lead não pode ser reativado
+export const MOTIVOS_DESQUALIFICANTES = new Set<MotivoPerdaType>([
+  'lead_ruim',
+  'locacao',
+  'contato_errado',
+])
+
 export const MOTIVO_PERDA_LABELS: Record<MotivoPerdaType, string> = {
   sem_interesse: 'Sem Interesse',
   sem_dinheiro: 'Sem Orcamento',

@@ -15,7 +15,7 @@ function GoogleCalendarConnectCompact() {
 }
 import {
   FUNIL_LABELS, FUNIL_ORDER, TEMPERATURA_LABELS, TEMPERATURA_COLORS,
-  MOTIVO_PERDA_LABELS,
+  MOTIVO_PERDA_LABELS, MOTIVOS_DESQUALIFICANTES,
   type StatusFunil, type Temperatura, type Lead, type MotivoPerdaType,
 } from '@/types'
 import {
@@ -110,6 +110,13 @@ function DeclineModal({ onConfirm, onCancel }: {
   onCancel: () => void
 }) {
   const [motivo, setMotivo] = useState<MotivoPerdaType | ''>('')
+  const isDesq = motivo !== '' && MOTIVOS_DESQUALIFICANTES.has(motivo as MotivoPerdaType)
+
+  const recuperaveis = (Object.entries(MOTIVO_PERDA_LABELS) as [MotivoPerdaType, string][])
+    .filter(([key]) => !MOTIVOS_DESQUALIFICANTES.has(key))
+  const desqualificantes = (Object.entries(MOTIVO_PERDA_LABELS) as [MotivoPerdaType, string][])
+    .filter(([key]) => MOTIVOS_DESQUALIFICANTES.has(key))
+
   return (
     <div className="fixed inset-0 flex items-center justify-center z-50 p-4"
       style={{ background: 'rgba(31,45,61,0.5)', backdropFilter: 'blur(4px)' }}>
@@ -127,18 +134,62 @@ function DeclineModal({ onConfirm, onCancel }: {
           <p className="text-sm text-[#6B7C93]">
             Selecione o motivo da perda. Esta informação é <strong className="text-[#1F2D3D]">obrigatória</strong> para análise do funil.
           </p>
-          <div className="space-y-2">
-            {(Object.entries(MOTIVO_PERDA_LABELS) as [MotivoPerdaType, string][]).map(([key, label]) => (
-              <button key={key} onClick={() => setMotivo(key)}
-                className="w-full flex items-center gap-3 px-4 py-3 rounded-xl border-2 text-sm text-left transition-all font-medium"
-                style={motivo === key
-                  ? { borderColor: '#EF4444', background: '#FEF2F2', color: '#B91C1C' }
-                  : { borderColor: '#E0E6ED', background: '#F5F7FA', color: '#6B7C93' }}>
-                {motivo === key && <CheckCircle size={14} className="text-red-500 flex-shrink-0" />}
-                {label}
-              </button>
-            ))}
+
+          {/* Motivos recuperáveis */}
+          <div>
+            <p className="text-xs font-semibold mb-2 flex items-center gap-1.5" style={{ color: '#B45309' }}>
+              <Phone size={11} /> Pode tentar contato novamente
+            </p>
+            <div className="space-y-1.5">
+              {recuperaveis.map(([key, label]) => (
+                <button key={key} onClick={() => setMotivo(key)}
+                  className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl border-2 text-sm text-left transition-all font-medium"
+                  style={motivo === key
+                    ? { borderColor: '#F59E0B', background: '#FFFBEB', color: '#92400E' }
+                    : { borderColor: '#E0E6ED', background: '#F5F7FA', color: '#6B7C93' }}>
+                  {motivo === key && <CheckCircle size={13} style={{ color: '#F59E0B', flexShrink: 0 }} />}
+                  {label}
+                </button>
+              ))}
+            </div>
           </div>
+
+          {/* Divisor */}
+          <div className="flex items-center gap-2">
+            <div className="flex-1 h-px" style={{ background: '#E0E6ED' }} />
+            <span className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: '#A0AEC0' }}>Desqualificação permanente</span>
+            <div className="flex-1 h-px" style={{ background: '#E0E6ED' }} />
+          </div>
+
+          {/* Motivos desqualificantes */}
+          <div>
+            <div className="space-y-1.5">
+              {desqualificantes.map(([key, label]) => (
+                <button key={key} onClick={() => setMotivo(key)}
+                  className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl border-2 text-sm text-left transition-all font-medium"
+                  style={motivo === key
+                    ? { borderColor: '#EF4444', background: '#FEF2F2', color: '#B91C1C' }
+                    : { borderColor: '#E0E6ED', background: '#F5F7FA', color: '#6B7C93' }}>
+                  {motivo === key && <CheckCircle size={13} style={{ color: '#EF4444', flexShrink: 0 }} />}
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Aviso contextual */}
+          {motivo !== '' && (
+            <div className="rounded-lg px-3 py-2.5 text-xs font-medium flex items-start gap-2"
+              style={isDesq
+                ? { background: '#FEF2F2', color: '#B91C1C', border: '1px solid #FECACA' }
+                : { background: '#FFFBEB', color: '#92400E', border: '1px solid #FDE68A' }}>
+              <AlertTriangle size={13} style={{ flexShrink: 0, marginTop: 1 }} />
+              {isDesq
+                ? 'Este lead será permanentemente desqualificado e não poderá ser reativado.'
+                : 'Este lead pode ser tentado contato novamente no futuro.'}
+            </div>
+          )}
+
           <div className="flex gap-3 pt-1">
             <button onClick={onCancel} className="btn-secondary flex-1">Cancelar</button>
             <button onClick={() => motivo && onConfirm(motivo as MotivoPerdaType)} disabled={!motivo}
@@ -896,6 +947,16 @@ function LeadDetailContent({ lead }: { lead: Lead }) {
                   onMouseLeave={(e) => e.currentTarget.style.background = '#FEF2F2'}>
                   <XCircle size={13} /> Declinar Lead
                 </button>
+                {lead.status_funil === 'declinado' && lead.motivo_perda && !MOTIVOS_DESQUALIFICANTES.has(lead.motivo_perda) && (
+                  <button
+                    onClick={() => moveLead(lead.id, 'primeiro_contato', { temperatura: 'frio' })}
+                    className="w-full text-xs py-2 rounded-lg font-semibold transition-colors border flex items-center justify-center gap-1.5"
+                    style={{ background: '#F0F9FF', color: '#0284C7', borderColor: '#BAE6FD' }}
+                    onMouseEnter={(e) => e.currentTarget.style.background = '#E0F2FE'}
+                    onMouseLeave={(e) => e.currentTarget.style.background = '#F0F9FF'}>
+                    <Phone size={13} /> Tentar contato novamente
+                  </button>
+                )}
                 {!canEdit && (
                   <p className="text-[10px] text-[#A0AEC0] text-center pt-1">
                     Ações de venda disponíveis apenas para vendedores
@@ -940,7 +1001,11 @@ function LeadDetailContent({ lead }: { lead: Lead }) {
         </div>
       )}
       {showTempModal && <TemperaturaReuniaoModal onConfirm={(temp) => { moveLead(lead.id, 'reuniao_realizada', { temperatura: temp }); setShowTempModal(false) }} onCancel={() => setShowTempModal(false)} />}
-      {showDeclineModal && <DeclineModal onConfirm={(motivo) => { moveLead(lead.id, 'declinado', { temperatura: 'desqualificado', motivo_perda: motivo }); setShowDeclineModal(false) }} onCancel={() => setShowDeclineModal(false)} />}
+      {showDeclineModal && <DeclineModal onConfirm={(motivo) => {
+        const temp: Temperatura = MOTIVOS_DESQUALIFICANTES.has(motivo) ? 'desqualificado' : lead.temperatura
+        moveLead(lead.id, 'declinado', { temperatura: temp, motivo_perda: motivo })
+        setShowDeclineModal(false)
+      }} onCancel={() => setShowDeclineModal(false)} />}
       {showFechadoModal && (
         <div className="fixed inset-0 flex items-center justify-center z-50 p-4"
           style={{ background: 'rgba(31,45,61,0.5)', backdropFilter: 'blur(4px)' }}>
