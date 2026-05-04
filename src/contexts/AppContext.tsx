@@ -44,6 +44,8 @@ interface AppContextType {
   deleteLead: (id: string) => Promise<void>
   anotacoes: Anotacao[]
   addAnotacao: (anotacao: Omit<Anotacao, 'id' | 'created_at'>) => void
+  deleteAnotacao: (id: string) => void
+  updateAnotacao: (id: string, texto: string) => void
   historico: HistoricoMovimentacao[]
   users: User[]
   addUser: (user: Omit<User, 'id'>, senha?: string) => Promise<void>
@@ -529,6 +531,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     supabase.from('leads').update({ ultima_interacao_em: now }).eq('id', anotacao.lead_id)
   }, [])
 
+  const deleteAnotacao = useCallback((id: string) => {
+    setAnotacoes((prev) => prev.filter((a) => a.id !== id))
+    supabase.from('anotacoes').delete().eq('id', id)
+  }, [])
+
+  const updateAnotacao = useCallback((id: string, texto: string) => {
+    setAnotacoes((prev) => prev.map((a) => a.id === id ? { ...a, texto } : a))
+    supabase.from('anotacoes').update({ texto }).eq('id', id)
+  }, [])
+
   // ── Usuários ────────────────────────────────────────────────────────────────
   const addUser = useCallback(async (user: Omit<User, 'id'>, senha = '123456'): Promise<void> => {
     const newUser: User = { ...user, id: crypto.randomUUID(), ativo: true }
@@ -662,7 +674,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         currentUser, login, logout,
         googleConnected, refreshGoogleConnection,
         leads, updateLead, moveLead, addLead, deleteLead,
-        anotacoes, addAnotacao,
+        anotacoes, addAnotacao, deleteAnotacao, updateAnotacao,
         historico,
         users, addUser, updateUser, toggleUserAtivo,
         alertas, resolveAlerta,

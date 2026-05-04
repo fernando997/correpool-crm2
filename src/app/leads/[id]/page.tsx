@@ -24,7 +24,7 @@ import {
 import {
   ArrowLeft, Phone, Mail, Clock, ChevronRight, Send, Thermometer, Video,
   DollarSign, CheckCircle, XCircle, Edit3, Save, X, User, Calendar,
-  AlertTriangle, Bell, Zap, TrendingUp, Trash2,
+  AlertTriangle, Bell, Zap, TrendingUp, Trash2, CalendarClock, Pencil,
 } from 'lucide-react'
 
 const TEMP_EMOJI: Record<string, string> = {
@@ -228,9 +228,11 @@ export default function LeadDetailPage() {
 
 function LeadDetailContent({ lead }: { lead: Lead }) {
   const router = useRouter()
-  const { users, anotacoes, historico, alertas, resolveAlerta, updateLead, moveLead, addAnotacao, deleteLead, currentUser } = useApp()
+  const { users, anotacoes, historico, alertas, resolveAlerta, updateLead, moveLead, addAnotacao, deleteAnotacao, updateAnotacao, deleteLead, currentUser } = useApp()
 
-  const [novaAnotacao, setNovaAnotacao]     = useState('')
+  const [novaAnotacao, setNovaAnotacao]         = useState('')
+  const [editingAnotacaoId, setEditingAnotacaoId] = useState<string | null>(null)
+  const [editingAnotacaoText, setEditingAnotacaoText] = useState('')
   const [editing, setEditing]               = useState(false)
   const [editForm, setEditForm]             = useState<Lead>(lead)
   const [showSchedule, setShowSchedule]     = useState(false)
@@ -557,6 +559,8 @@ function LeadDetailContent({ lead }: { lead: Lead }) {
                     : { background: '#EFF6FF', color: '#1D4ED8' }
                   const badgeStyle = avatarStyle
                   const badgeLabel = tipo === 'sdr' ? 'SDR' : tipo === 'vendedor' ? 'Vendedor' : 'Admin'
+                  const isOwner = a.usuario_id === currentUser?.id || currentUser?.tipo === 'admin'
+                  const isEditing = editingAnotacaoId === a.id
                   return (
                     <div key={a.id} className="flex gap-3">
                       <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 mt-0.5"
@@ -571,8 +575,52 @@ function LeadDetailContent({ lead }: { lead: Lead }) {
                           <span className="text-[10px] text-[#A0AEC0]">
                             {new Date(a.created_at).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
                           </span>
+                          {isOwner && !isEditing && (
+                            <div className="ml-auto flex items-center gap-1">
+                              <button
+                                onClick={() => { setEditingAnotacaoId(a.id); setEditingAnotacaoText(a.texto) }}
+                                className="w-6 h-6 rounded flex items-center justify-center transition-colors hover:bg-[#E0E6ED]"
+                                title="Editar anotação">
+                                <Pencil size={11} style={{ color: '#6B7C93' }} />
+                              </button>
+                              <button
+                                onClick={() => deleteAnotacao(a.id)}
+                                className="w-6 h-6 rounded flex items-center justify-center transition-colors hover:bg-red-50"
+                                title="Excluir anotação">
+                                <Trash2 size={11} style={{ color: '#EF4444' }} />
+                              </button>
+                            </div>
+                          )}
                         </div>
-                        <p className="text-sm text-[#374151]">{a.texto}</p>
+                        {isEditing ? (
+                          <div className="space-y-2">
+                            <textarea
+                              className="input resize-none min-h-[72px] text-sm w-full"
+                              value={editingAnotacaoText}
+                              onChange={(e) => setEditingAnotacaoText(e.target.value)}
+                              autoFocus
+                            />
+                            <div className="flex gap-2">
+                              <button
+                                onClick={() => setEditingAnotacaoId(null)}
+                                className="btn-secondary text-xs px-3 py-1.5">
+                                Cancelar
+                              </button>
+                              <button
+                                onClick={() => {
+                                  if (editingAnotacaoText.trim()) {
+                                    updateAnotacao(a.id, editingAnotacaoText.trim())
+                                  }
+                                  setEditingAnotacaoId(null)
+                                }}
+                                className="btn-success text-xs px-3 py-1.5 flex items-center gap-1">
+                                <Save size={12} /> Salvar
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <p className="text-sm text-[#374151]">{a.texto}</p>
+                        )}
                       </div>
                     </div>
                   )
@@ -681,6 +729,39 @@ function LeadDetailContent({ lead }: { lead: Lead }) {
                 )}
               </div>
             </div>
+
+            {/* Próximo Follow-up */}
+            {(() => {
+              const pc = lead.proximo_contato
+              if (!pc) return null
+              const todayStr = new Date().toISOString().split('T')[0]
+              const isPast  = pc < todayStr
+              const isToday = pc === todayStr
+              const color   = isPast ? '#B91C1C' : isToday ? '#C2410C' : '#0369A1'
+              const bg      = isPast ? '#FEF2F2' : isToday ? '#FFF7ED' : '#EFF6FF'
+              const border  = isPast ? '#FECACA' : isToday ? '#FED7AA' : '#BFDBFE'
+              const [y, m, d] = pc.split('-')
+              const formatted = `${d}/${m}/${y}`
+              return (
+                <div className="rounded-xl p-4" style={{ background: bg, border: `1px solid ${border}` }}>
+                  <div className="flex items-center gap-2 mb-1">
+                    <CalendarClock size={14} style={{ color }} />
+                    <h3 className="text-sm font-bold" style={{ color }}>Próximo Follow-up</h3>
+                    {isPast && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full" style={{ background: '#FECACA', color: '#B91C1C' }}>ATRASADO</span>}
+                    {isToday && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full" style={{ background: '#FED7AA', color: '#C2410C' }}>HOJE</span>}
+                  </div>
+                  <p className="text-xl font-extrabold" style={{ color }}>{formatted}</p>
+                  <button
+                    onClick={() => updateLead(lead.id, { proximo_contato: undefined })}
+                    className="text-[10px] mt-2 font-medium transition-colors"
+                    style={{ color: '#A0AEC0' }}
+                    onMouseEnter={(e) => { e.currentTarget.style.color = '#B91C1C' }}
+                    onMouseLeave={(e) => { e.currentTarget.style.color = '#A0AEC0' }}>
+                    Remover agendamento
+                  </button>
+                </div>
+              )
+            })()}
 
             {/* Temperatura */}
             <div className="rounded-xl p-4" style={{ background: '#FFFFFF', border: '1px solid #E0E6ED' }}>

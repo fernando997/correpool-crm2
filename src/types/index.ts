@@ -27,6 +27,8 @@ export type MotivoPerdaType =
   | 'timing_ruim'
   | 'lead_ruim'
   | 'concorrente'
+  | 'locacao'
+  | 'contato_errado'
 
 export type AlertaTipo = 'lead_parado' | 'followup_atrasado' | 'reuniao_proxima'
 
@@ -175,6 +177,8 @@ export const MOTIVO_PERDA_LABELS: Record<MotivoPerdaType, string> = {
   timing_ruim: 'Timing Ruim',
   lead_ruim: 'Lead Sem Fit',
   concorrente: 'Fechou com Concorrente',
+  locacao: 'Locação',
+  contato_errado: 'Contato Errado',
 }
 
 export const TEMPERATURA_LABELS: Record<Temperatura, string> = {
