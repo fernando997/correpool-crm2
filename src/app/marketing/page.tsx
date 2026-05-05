@@ -929,23 +929,37 @@ export default function MarketingPage() {
     const { jsPDF } = await import('jspdf')
     const { default: autoTable } = await import('jspdf-autotable')
 
-    // Carrega logo como base64
+    // Carrega logo: redimensiona via canvas e exporta como JPEG comprimido
+    // para evitar PNG cru embutido que gera PDFs de centenas de MB
     let logoBase64 = ''
+    let logoFormat: 'JPEG' | 'PNG' = 'JPEG'
     try {
       const res  = await fetch('/logo.png')
       const blob = await res.blob()
-      logoBase64 = await new Promise<string>((resolve) => {
-        const reader = new FileReader()
-        reader.onloadend = () => resolve(reader.result as string)
-        reader.readAsDataURL(blob)
+      const objUrl = URL.createObjectURL(blob)
+      const img = new Image()
+      img.src = objUrl
+      await new Promise<void>((resolve, reject) => {
+        img.onload  = () => resolve()
+        img.onerror = reject
       })
+      // Renderiza em canvas pequeno (2× tamanho de exibição: 35mm×14mm @ 96dpi ≈ 132×53px)
+      const canvas = document.createElement('canvas')
+      canvas.width  = 132
+      canvas.height = 53
+      const ctx = canvas.getContext('2d')!
+      ctx.clearRect(0, 0, canvas.width, canvas.height)
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
+      logoBase64 = canvas.toDataURL('image/jpeg', 0.80)
+      URL.revokeObjectURL(objUrl)
+      logoFormat = 'JPEG'
     } catch { /* sem logo */ }
 
     const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
     const pageW = doc.internal.pageSize.getWidth()
 
     // ── Cabeçalho ──
-    if (logoBase64) doc.addImage(logoBase64, 'PNG', 14, 8, 35, 14)
+    if (logoBase64) doc.addImage(logoBase64, logoFormat, 14, 8, 35, 14)
     doc.setFontSize(16)
     doc.setFont('helvetica', 'bold')
     doc.setTextColor(31, 45, 61)
@@ -1038,10 +1052,18 @@ export default function MarketingPage() {
     doc.setTextColor(31, 45, 61)
     doc.text('Leads do Período', 14, afterCriativos)
 
+    const MAX_LEADS_PDF = 500
+    const leadsParaPDF = filteredLeads.slice(0, MAX_LEADS_PDF)
+    if (filteredLeads.length > MAX_LEADS_PDF) {
+      doc.setFontSize(8)
+      doc.setFont('helvetica', 'italic')
+      doc.setTextColor(160, 174, 192)
+      doc.text(`(exibindo ${MAX_LEADS_PDF} de ${filteredLeads.length} leads — exporte CSV para lista completa)`, 14, afterCriativos + 1.5)
+    }
     autoTable(doc, {
-      startY: afterCriativos + 3,
+      startY: afterCriativos + (filteredLeads.length > MAX_LEADS_PDF ? 6 : 3),
       head: [['Nome', 'Criativo', 'Campanha', 'Status', 'Data/Hora']],
-      body: filteredLeads.map((l) => [
+      body: leadsParaPDF.map((l) => [
         l.nome,
         (CRIATIVO_LABELS[l.utm_content || ''] || l.utm_content || '-').substring(0, 22),
         campLabel(l.utm_campaign || '-').substring(0, 22),
