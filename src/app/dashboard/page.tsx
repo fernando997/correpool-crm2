@@ -1015,6 +1015,8 @@ export default function DashboardPage() {
   const [period, setPeriod]       = useState<string>('tudo')
   const [customFrom, setCustomFrom] = useState('')
   const [customTo,   setCustomTo]   = useState('')
+  const [hourFrom,   setHourFrom]   = useState('')
+  const [hourTo,     setHourTo]     = useState('')
 
   // Roteamento por perfil — hooks devem estar antes dos early returns
   if (currentUser?.tipo === 'vendedor') return <VendedorDashboard />
@@ -1048,9 +1050,21 @@ export default function DashboardPage() {
   }
 
   const range = getRange()
-  const filteredLeads = range
-    ? leads.filter((l) => l.data_criacao >= range[0] && l.data_criacao <= range[1])
-    : leads
+  const filteredLeads = (() => {
+    let list = range
+      ? leads.filter((l) => l.data_criacao >= range[0] && l.data_criacao <= range[1])
+      : leads
+    if (hourFrom !== '' || hourTo !== '') {
+      const hFrom = hourFrom !== '' ? parseInt(hourFrom) : 0
+      const hTo   = hourTo   !== '' ? parseInt(hourTo)   : 23
+      list = list.filter((l) => {
+        const ts = l.created_at || `${l.data_criacao}T09:00:00`
+        const h  = getHourSP(ts)
+        return h >= hFrom && h <= hTo
+      })
+    }
+    return list
+  })()
 
   const m        = calcFunnelMetrics(filteredLeads)
   const gargalos = calcGargalos(filteredLeads)
@@ -1175,6 +1189,31 @@ export default function DashboardPage() {
                 style={{ border: '1px solid #E0E6ED', background: '#F5F7FA', color: '#1F2D3D' }} />
             </div>
           )}
+          {/* Filtro de horário */}
+          <div className="flex items-center gap-2 ml-2 pl-2" style={{ borderLeft: '1px solid #E0E6ED' }}>
+            <span className="text-[11px] font-bold text-text-muted uppercase tracking-widest">Horário:</span>
+            <input
+              type="number" min={0} max={23} placeholder="00h"
+              value={hourFrom}
+              onChange={(e) => setHourFrom(e.target.value)}
+              className="text-xs px-2 py-1.5 rounded-lg border outline-none w-14 text-center"
+              style={{ border: '1px solid #E0E6ED', background: '#F5F7FA', color: '#1F2D3D' }}
+            />
+            <span className="text-xs text-text-muted">às</span>
+            <input
+              type="number" min={0} max={23} placeholder="23h"
+              value={hourTo}
+              onChange={(e) => setHourTo(e.target.value)}
+              className="text-xs px-2 py-1.5 rounded-lg border outline-none w-14 text-center"
+              style={{ border: '1px solid #E0E6ED', background: '#F5F7FA', color: '#1F2D3D' }}
+            />
+            {(hourFrom !== '' || hourTo !== '') && (
+              <button onClick={() => { setHourFrom(''); setHourTo('') }}
+                className="text-text-muted hover:text-red-400 transition-colors">
+                <XIcon size={13} />
+              </button>
+            )}
+          </div>
           {range && (
             <span className="ml-auto text-[11px] font-semibold px-2 py-1 rounded-lg"
               style={{ background: '#E8F8F0', color: '#059669', border: '1px solid #2FBF71' }}>

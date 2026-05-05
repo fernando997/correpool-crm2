@@ -11,7 +11,7 @@ import {
 import {
   Trophy, AlertTriangle, ChevronUp, ChevronDown, Download,
   Star, Zap, Target, TrendingUp, TrendingDown, DollarSign, Users,
-  Layers, Filter, BarChart2, Rocket, PauseCircle,
+  Layers, Filter, BarChart2, Rocket, PauseCircle, Clock,
   CheckCircle, Settings2, Calendar, ArrowUpRight, X, GitCompare, Flame,
 } from 'lucide-react'
 import {
@@ -60,6 +60,17 @@ const SOURCE_COLORS: Record<string, string> = {
   instagram: VIOLET,
   youtube:   RED,
   linkedin:  '#0a66c2',
+}
+
+const TZ_SP = 'America/Sao_Paulo'
+function getHourSP(ts: string): number {
+  try {
+    const parts = new Intl.DateTimeFormat('pt-BR', {
+      timeZone: TZ_SP, hour: 'numeric', hour12: false,
+    }).formatToParts(new Date(ts))
+    const h = parts.find((p) => p.type === 'hour')
+    return h ? parseInt(h.value, 10) : 9
+  } catch { return 9 }
 }
 
 type Tab = 'campanhas' | 'criativos' | 'decisao' | 'calor'
@@ -690,6 +701,8 @@ export default function MarketingPage() {
   const [period, setPeriod]         = useState<Period>('todos')
   const [dateFrom, setDateFrom]     = useState('')
   const [dateTo, setDateTo]         = useState('')
+  const [hourFrom, setHourFrom]     = useState('')
+  const [hourTo,   setHourTo]       = useState('')
   const [compareMode, setCompareMode] = useState(false)
   const [compFrom, setCompFrom]     = useState('')
   const [compTo, setCompTo]         = useState('')
@@ -729,9 +742,18 @@ export default function MarketingPage() {
     let result = applyDateFilters(leads, dateFrom, dateTo, period)
     if (campFiltro !== 'todas') result = result.filter((l) => l.utm_campaign === campFiltro)
     if (fonteFiltro !== 'todas') result = result.filter((l) => l.utm_source === fonteFiltro)
+    if (hourFrom !== '' || hourTo !== '') {
+      const hFrom = hourFrom !== '' ? parseInt(hourFrom) : 0
+      const hTo   = hourTo   !== '' ? parseInt(hourTo)   : 23
+      result = result.filter((l) => {
+        const ts = l.created_at || `${l.data_criacao}T09:00:00`
+        const h  = getHourSP(ts)
+        return h >= hFrom && h <= hTo
+      })
+    }
     return result
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [leads, period, dateFrom, dateTo, campFiltro, fonteFiltro, maxDate])
+  }, [leads, period, dateFrom, dateTo, campFiltro, fonteFiltro, maxDate, hourFrom, hourTo])
 
   const filteredLeadsB = useMemo(() => {
     if (!compareMode || (!compFrom && !compTo)) return [] as Lead[]
@@ -941,6 +963,30 @@ export default function MarketingPage() {
               {(dateFrom || dateTo) && (
                 <button onClick={() => { setDateFrom(''); setDateTo(''); setPeriod('todos') }}
                   className="text-text-muted hover:text-text-primary transition-colors">
+                  <X size={13} />
+                </button>
+              )}
+            </div>
+
+            {/* Filtro de horário */}
+            <div className="flex items-center gap-2">
+              <Clock size={13} className="text-text-muted flex-shrink-0" />
+              <input
+                type="number" min={0} max={23} placeholder="00h"
+                value={hourFrom}
+                onChange={(e) => setHourFrom(e.target.value)}
+                className="input text-xs py-1.5 w-14 text-center"
+              />
+              <span className="text-text-dim text-xs">às</span>
+              <input
+                type="number" min={0} max={23} placeholder="23h"
+                value={hourTo}
+                onChange={(e) => setHourTo(e.target.value)}
+                className="input text-xs py-1.5 w-14 text-center"
+              />
+              {(hourFrom !== '' || hourTo !== '') && (
+                <button onClick={() => { setHourFrom(''); setHourTo('') }}
+                  className="text-text-muted hover:text-red-400 transition-colors">
                   <X size={13} />
                 </button>
               )}
