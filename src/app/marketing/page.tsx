@@ -11,7 +11,7 @@ import {
 import {
   Trophy, AlertTriangle, ChevronUp, ChevronDown, Download,
   Star, Zap, Target, TrendingUp, TrendingDown, DollarSign, Users,
-  Layers, Filter, BarChart2, Rocket, PauseCircle, Clock,
+  Layers, Filter, BarChart2, Rocket, PauseCircle, Clock, FileText,
   CheckCircle, Settings2, Calendar, ArrowUpRight, X, GitCompare, Flame,
 } from 'lucide-react'
 import {
@@ -20,6 +20,7 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Cell, Legend,
 } from 'recharts'
+import { FUNIL_LABELS } from '@/types'
 import type { Lead } from '@/types'
 
 // ── Paleta ────────────────────────────────────────────────────────────────────
@@ -701,8 +702,8 @@ export default function MarketingPage() {
   const [period, setPeriod]         = useState<Period>('todos')
   const [dateFrom, setDateFrom]     = useState('')
   const [dateTo, setDateTo]         = useState('')
-  const [hourFrom, setHourFrom]     = useState('')
-  const [hourTo,   setHourTo]       = useState('')
+  const [datetimeFrom, setDatetimeFrom] = useState('')
+  const [datetimeTo,   setDatetimeTo]   = useState('')
   const [compareMode, setCompareMode] = useState(false)
   const [compFrom, setCompFrom]     = useState('')
   const [compTo, setCompTo]         = useState('')
@@ -739,21 +740,24 @@ export default function MarketingPage() {
   }
 
   const filteredLeads = useMemo(() => {
-    let result = applyDateFilters(leads, dateFrom, dateTo, period)
+    let result: Lead[]
+    if (datetimeFrom || datetimeTo) {
+      // Filtro preciso: usa created_at comparando datetime completo
+      const dtFrom = datetimeFrom ? new Date(datetimeFrom).getTime() : -Infinity
+      const dtTo   = datetimeTo   ? new Date(datetimeTo).getTime()   : Infinity
+      result = leads.filter((l) => {
+        const ts = l.created_at || `${l.data_criacao}T09:00:00`
+        const t  = new Date(ts).getTime()
+        return t >= dtFrom && t <= dtTo
+      })
+    } else {
+      result = applyDateFilters(leads, dateFrom, dateTo, period)
+    }
     if (campFiltro !== 'todas') result = result.filter((l) => l.utm_campaign === campFiltro)
     if (fonteFiltro !== 'todas') result = result.filter((l) => l.utm_source === fonteFiltro)
-    if (hourFrom !== '' || hourTo !== '') {
-      const hFrom = hourFrom !== '' ? parseInt(hourFrom) : 0
-      const hTo   = hourTo   !== '' ? parseInt(hourTo)   : 23
-      result = result.filter((l) => {
-        const ts = l.created_at || `${l.data_criacao}T09:00:00`
-        const h  = getHourSP(ts)
-        return h >= hFrom && h <= hTo
-      })
-    }
     return result
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [leads, period, dateFrom, dateTo, campFiltro, fonteFiltro, maxDate, hourFrom, hourTo])
+  }, [leads, period, dateFrom, dateTo, datetimeFrom, datetimeTo, campFiltro, fonteFiltro, maxDate])
 
   const filteredLeadsB = useMemo(() => {
     if (!compareMode || (!compFrom && !compTo)) return [] as Lead[]
@@ -900,6 +904,119 @@ export default function MarketingPage() {
     downloadXLS(rows, 'relatorio-decisao-investimento.xls')
   }
 
+  async function generatePDF() {
+    const { jsPDF } = await import('jspdf')
+    const { default: autoTable } = await import('jspdf-autotable')
+
+    // Carrega logo como base64
+    let logoBase64 = ''
+    try {
+      const res  = await fetch('/logo.png')
+      const blob = await res.blob()
+      logoBase64 = await new Promise<string>((resolve) => {
+        const reader = new FileReader()
+        reader.onloadend = () => resolve(reader.result as string)
+        reader.readAsDataURL(blob)
+      })
+    } catch { /* sem logo */ }
+
+    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
+    const pageW = doc.internal.pageSize.getWidth()
+
+    // ── Cabeçalho ──
+    if (logoBase64) doc.addImage(logoBase64, 'PNG', 14, 8, 35, 14)
+    doc.setFontSize(16)
+    doc.setFont('helvetica', 'bold')
+    doc.setTextColor(31, 45, 61)
+    doc.text('Relatório de Marketing', pageW / 2, 16, { align: 'center' })
+
+    const periodLabel = datetimeFrom || datetimeTo
+      ? `${datetimeFrom ? new Date(datetimeFrom).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' }) : 'início'} → ${datetimeTo ? new Date(datetimeTo).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' }) : 'agora'}`
+      : period === 'todos' ? 'Todos os períodos' : `Últimos ${period}`
+    doc.setFontSize(9)
+    doc.setFont('helvetica', 'normal')
+    doc.setTextColor(107, 124, 147)
+    doc.text(`Período: ${periodLabel}`, pageW / 2, 22, { align: 'center' })
+    doc.text(`Gerado em: ${new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}`, pageW / 2, 27, { align: 'center' })
+
+    // Linha separadora
+    doc.setDrawColor(224, 230, 237)
+    doc.line(14, 31, pageW - 14, 31)
+
+    // ── Resumo ──
+    doc.setFontSize(10)
+    doc.setFont('helvetica', 'bold')
+    doc.setTextColor(31, 45, 61)
+    doc.text('Resumo', 14, 38)
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(9)
+    doc.setTextColor(55, 65, 81)
+    const totalReceita = filteredLeads.filter(l => l.status_funil === 'fechado').reduce((s, l) => s + (l.valor_fechado ?? l.valor_contrato ?? 0), 0)
+    const totalVendasR = filteredLeads.filter(l => l.status_funil === 'fechado').length
+    doc.text(`Total de Leads: ${filteredLeads.length}   |   Vendas: ${totalVendasR}   |   Receita: R$ ${totalReceita.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, 14, 44)
+
+    // ── Tabela de Criativos ──
+    doc.setFontSize(11)
+    doc.setFont('helvetica', 'bold')
+    doc.setTextColor(31, 45, 61)
+    doc.text('Desempenho por Criativo', 14, 52)
+
+    const criativos = calcMetricasPorCriativo(filteredLeads)
+    autoTable(doc, {
+      startY: 55,
+      head: [['Criativo', 'Leads', 'Agend.', 'Vendas', 'Conv.%', 'Desq.%', 'Receita (R$)']],
+      body: criativos.map((c) => [
+        (CRIATIVO_LABELS[c.utm_content] || c.utm_content).substring(0, 30),
+        c.total_leads,
+        c.agendou,
+        c.vendas,
+        c.taxa_conversao.toFixed(1) + '%',
+        c.taxa_desqualificacao.toFixed(1) + '%',
+        c.receita_total.toLocaleString('pt-BR', { minimumFractionDigits: 2 }),
+      ]),
+      headStyles: { fillColor: [31, 45, 61], textColor: 255, fontSize: 8, fontStyle: 'bold' },
+      bodyStyles: { fontSize: 8, textColor: [55, 65, 81] },
+      alternateRowStyles: { fillColor: [245, 247, 250] },
+      margin: { left: 14, right: 14 },
+    })
+
+    // ── Tabela de Leads ──
+    const afterCriativos = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 8
+    doc.setFontSize(11)
+    doc.setFont('helvetica', 'bold')
+    doc.setTextColor(31, 45, 61)
+    doc.text('Leads do Período', 14, afterCriativos)
+
+    autoTable(doc, {
+      startY: afterCriativos + 3,
+      head: [['Nome', 'Criativo', 'Campanha', 'Status', 'Data/Hora']],
+      body: filteredLeads.map((l) => [
+        l.nome,
+        (CRIATIVO_LABELS[l.utm_content || ''] || l.utm_content || '-').substring(0, 22),
+        campLabel(l.utm_campaign || '-').substring(0, 22),
+        FUNIL_LABELS[l.status_funil] || l.status_funil,
+        l.created_at
+          ? new Date(l.created_at).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' })
+          : l.data_criacao,
+      ]),
+      headStyles: { fillColor: [31, 45, 61], textColor: 255, fontSize: 8, fontStyle: 'bold' },
+      bodyStyles: { fontSize: 7.5, textColor: [55, 65, 81] },
+      alternateRowStyles: { fillColor: [245, 247, 250] },
+      margin: { left: 14, right: 14 },
+    })
+
+    // Rodapé com número de página
+    const pageCount = doc.getNumberOfPages()
+    for (let i = 1; i <= pageCount; i++) {
+      doc.setPage(i)
+      doc.setFontSize(8)
+      doc.setTextColor(160, 174, 192)
+      doc.text(`Página ${i} de ${pageCount}`, pageW / 2, doc.internal.pageSize.getHeight() - 8, { align: 'center' })
+    }
+
+    doc.save(`relatorio-marketing-${new Date().toISOString().split('T')[0]}.pdf`)
+  }
+
   const chartCampanhas = campanhas.map((c) => ({
     name: (campLabel(c.campanha)).replace(' Q1', ''),
     Leads: c.total_leads,
@@ -950,42 +1067,18 @@ export default function MarketingPage() {
               ))}
             </div>
 
-            {/* Data customizada */}
-            <div className="flex items-center gap-2">
-              <Calendar size={13} className="text-text-muted flex-shrink-0" />
-              <input type="date" value={dateFrom}
-                onChange={(e) => { setDateFrom(e.target.value); setPeriod('custom') }}
-                className="input text-xs py-1.5 !w-36" />
-              <span className="text-text-dim text-xs">até</span>
-              <input type="date" value={dateTo}
-                onChange={(e) => { setDateTo(e.target.value); setPeriod('custom') }}
-                className="input text-xs py-1.5 !w-36" />
-              {(dateFrom || dateTo) && (
-                <button onClick={() => { setDateFrom(''); setDateTo(''); setPeriod('todos') }}
-                  className="text-text-muted hover:text-text-primary transition-colors">
-                  <X size={13} />
-                </button>
-              )}
-            </div>
-
-            {/* Filtro de horário */}
+            {/* Período exato com data e hora */}
             <div className="flex items-center gap-2">
               <Clock size={13} className="text-text-muted flex-shrink-0" />
-              <input
-                type="number" min={0} max={23} placeholder="00h"
-                value={hourFrom}
-                onChange={(e) => setHourFrom(e.target.value)}
-                className="input text-xs py-1.5 w-14 text-center"
-              />
-              <span className="text-text-dim text-xs">às</span>
-              <input
-                type="number" min={0} max={23} placeholder="23h"
-                value={hourTo}
-                onChange={(e) => setHourTo(e.target.value)}
-                className="input text-xs py-1.5 w-14 text-center"
-              />
-              {(hourFrom !== '' || hourTo !== '') && (
-                <button onClick={() => { setHourFrom(''); setHourTo('') }}
+              <input type="datetime-local" value={datetimeFrom}
+                onChange={(e) => { setDatetimeFrom(e.target.value); setPeriod('custom') }}
+                className="input text-xs py-1.5 !w-44" />
+              <span className="text-text-dim text-xs">até</span>
+              <input type="datetime-local" value={datetimeTo}
+                onChange={(e) => { setDatetimeTo(e.target.value); setPeriod('custom') }}
+                className="input text-xs py-1.5 !w-44" />
+              {(datetimeFrom || datetimeTo) && (
+                <button onClick={() => { setDatetimeFrom(''); setDatetimeTo(''); setPeriod('todos') }}
                   className="text-text-muted hover:text-red-400 transition-colors">
                   <X size={13} />
                 </button>
@@ -1015,6 +1108,14 @@ export default function MarketingPage() {
               style={compareMode ? { background: 'rgba(124,58,237,0.15)' } : {}}>
               <GitCompare size={13} />
               Comparar Períodos
+            </button>
+
+            <button onClick={generatePDF}
+              className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg border transition-all"
+              style={{ background: '#FEF2F2', color: '#B91C1C', borderColor: '#FECACA' }}
+              onMouseEnter={(e) => e.currentTarget.style.background = '#FEE2E2'}
+              onMouseLeave={(e) => e.currentTarget.style.background = '#FEF2F2'}>
+              <FileText size={13} /> Exportar PDF
             </button>
 
             <div className="ml-auto text-xs text-text-dim">
