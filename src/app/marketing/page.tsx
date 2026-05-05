@@ -787,6 +787,27 @@ export default function MarketingPage() {
   const ticketMedio   = totalVendas > 0 ? totalReceita / totalVendas : 0
   const taxaConvGeral = totalLeads > 0 ? (totalVendas / totalLeads) * 100 : 0
 
+  // Leads por vendedor (respeitando escopo já filtrado por perfil)
+  const leadsPerVendedor = useMemo(() => {
+    const AGENDOU_V = ['agendado','reuniao_realizada','contrato_enviado','contrato_assinado','fechado']
+    const map: Record<string, { id: string; nome: string; leads: number; vendas: number; receita: number; agendamentos: number }> = {}
+    for (const l of filteredLeads) {
+      const vid = l.vendedor_id || 'sem_vendedor'
+      if (!map[vid]) {
+        const u = users.find((u) => u.id === vid)
+        map[vid] = { id: vid, nome: u?.nome || 'Sem vendedor', leads: 0, vendas: 0, receita: 0, agendamentos: 0 }
+      }
+      map[vid].leads++
+      if (l.status_funil === 'fechado') {
+        map[vid].vendas++
+        map[vid].receita += l.valor_fechado || 0
+      }
+      if (AGENDOU_V.includes(l.status_funil)) map[vid].agendamentos++
+    }
+    return Object.values(map).sort((a, b) => b.leads - a.leads)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filteredLeads, users])
+
   // ── Dados de comparação (Período B) ───────────────────────────────────────
   const campanhasB    = useMemo(() => calcMetricasPorCampanha(filteredLeadsB), [filteredLeadsB])
   const totalLeadsB   = filteredLeadsB.length
@@ -955,15 +976,45 @@ export default function MarketingPage() {
     const totalVendasR = filteredLeads.filter(l => l.status_funil === 'fechado').length
     doc.text(`Total de Leads: ${filteredLeads.length}   |   Vendas: ${totalVendasR}   |   Receita: R$ ${totalReceita.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, 14, 44)
 
+    // ── Tabela Leads por Vendedor ──
+    doc.setFontSize(11)
+    doc.setFont('helvetica', 'bold')
+    doc.setTextColor(31, 45, 61)
+    doc.text('Leads por Vendedor', 14, 52)
+
+    autoTable(doc, {
+      startY: 55,
+      head: [['Vendedor', 'Leads', 'Agend.', '% Agend.', 'Vendas', '% Conv.', 'Receita (R$)']],
+      body: leadsPerVendedor.map((v) => {
+        const taxaAgend = v.leads > 0 ? (v.agendamentos / v.leads) * 100 : 0
+        const taxaConv  = v.leads > 0 ? (v.vendas / v.leads) * 100 : 0
+        return [
+          v.nome,
+          v.leads,
+          v.agendamentos,
+          taxaAgend.toFixed(1) + '%',
+          v.vendas,
+          taxaConv.toFixed(1) + '%',
+          v.receita.toLocaleString('pt-BR', { minimumFractionDigits: 2 }),
+        ]
+      }),
+      headStyles: { fillColor: [31, 45, 61], textColor: 255, fontSize: 8, fontStyle: 'bold' },
+      bodyStyles: { fontSize: 8, textColor: [55, 65, 81] },
+      alternateRowStyles: { fillColor: [245, 247, 250] },
+      margin: { left: 14, right: 14 },
+    })
+
+    const afterVendedores = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 8
+
     // ── Tabela de Criativos ──
     doc.setFontSize(11)
     doc.setFont('helvetica', 'bold')
     doc.setTextColor(31, 45, 61)
-    doc.text('Desempenho por Criativo', 14, 52)
+    doc.text('Desempenho por Criativo', 14, afterVendedores)
 
     const criativos = calcMetricasPorCriativo(filteredLeads)
     autoTable(doc, {
-      startY: 55,
+      startY: afterVendedores + 3,
       head: [['Criativo', 'Leads', 'Agend.', 'Vendas', 'Conv.%', 'Desq.%', 'Receita (R$)']],
       body: criativos.map((c) => [
         (CRIATIVO_LABELS[c.utm_content] || c.utm_content).substring(0, 30),
@@ -1197,6 +1248,98 @@ export default function MarketingPage() {
             )
           })}
         </div>
+
+        {/* ── Leads por Vendedor ───────────────────────────────────────────── */}
+        {leadsPerVendedor.length > 0 && (
+          <div className="card overflow-hidden">
+            <div className="px-6 py-4 flex items-center justify-between" style={{ borderBottom: '1px solid #E0E6ED' }}>
+              <div>
+                <h3 className="section-title flex items-center gap-2">
+                  <Users size={15} style={{ color: BLUE_L }} />
+                  {currentUser?.tipo === 'vendedor'
+                    ? 'Meus Leads no Período'
+                    : currentUser?.tipo === 'sdr'
+                    ? 'Leads por Vendedor Atendido'
+                    : 'Leads por Vendedor'}
+                </h3>
+                <p className="text-xs text-text-muted mt-0.5">
+                  {currentUser?.tipo === 'vendedor'
+                    ? 'Desempenho dos seus leads no período selecionado'
+                    : currentUser?.tipo === 'sdr'
+                    ? 'Desempenho de cada vendedor que você atende'
+                    : 'Desempenho de todos os vendedores no período'}
+                </p>
+              </div>
+              <span className="text-[10px] font-semibold px-2 py-1 rounded-full"
+                style={{ background: `${BLUE_L}15`, color: BLUE_L }}>
+                {leadsPerVendedor.length} vendedor{leadsPerVendedor.length !== 1 ? 'es' : ''}
+              </span>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr style={{ borderBottom: '1px solid #E0E6ED', background: '#F5F7FA' }}>
+                    {['Vendedor', 'Leads', 'Agendamentos', '% Agend.', 'Vendas', '% Conv.', 'Receita'].map((h) => (
+                      <th key={h} className="text-left px-5 py-3 text-[10px] font-bold uppercase tracking-widest text-text-muted">
+                        {h}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {leadsPerVendedor.map((v, idx) => {
+                    const taxaAgend = v.leads > 0 ? (v.agendamentos / v.leads) * 100 : 0
+                    const taxaConv  = v.leads > 0 ? (v.vendas / v.leads) * 100 : 0
+                    const maxLeads  = leadsPerVendedor[0]?.leads || 1
+                    const barPct    = (v.leads / maxLeads) * 100
+                    const convColor = taxaConv >= 15 ? GREEN_L : taxaConv >= 5 ? AMBER : RED
+                    return (
+                      <tr key={v.id} style={{ borderBottom: '1px solid #F5F7FA' }}
+                        className="hover:bg-elevated transition-colors">
+                        <td className="px-5 py-3">
+                          <div className="flex items-center gap-2.5">
+                            <div className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 text-[10px] font-black text-white"
+                              style={{ background: CHART_PALETTE[idx % CHART_PALETTE.length] }}>
+                              {v.nome.charAt(0).toUpperCase()}
+                            </div>
+                            <span className="text-xs font-semibold text-text-primary">{v.nome}</span>
+                          </div>
+                        </td>
+                        <td className="px-5 py-3">
+                          <div className="flex items-center gap-2">
+                            <div className="w-20 rounded-full h-1.5 flex-shrink-0" style={{ background: '#E0E6ED' }}>
+                              <div className="h-1.5 rounded-full" style={{ width: `${barPct}%`, background: CHART_PALETTE[idx % CHART_PALETTE.length] }} />
+                            </div>
+                            <span className="text-sm font-bold text-text-bright">{v.leads}</span>
+                          </div>
+                        </td>
+                        <td className="px-5 py-3">
+                          <span className="text-sm font-bold" style={{ color: AMBER }}>{v.agendamentos}</span>
+                        </td>
+                        <td className="px-5 py-3">
+                          <PercentBar value={taxaAgend} color={SKY} />
+                        </td>
+                        <td className="px-5 py-3">
+                          <span className="text-sm font-bold" style={{ color: v.vendas > 0 ? GREEN_L : '#3d5a7a' }}>{v.vendas}</span>
+                        </td>
+                        <td className="px-5 py-3">
+                          <span className="text-sm font-bold" style={{ color: convColor }}>
+                            {taxaConv.toFixed(1)}%
+                          </span>
+                        </td>
+                        <td className="px-5 py-3">
+                          <span className="text-sm font-bold" style={{ color: v.receita > 0 ? GREEN_L : '#3d5a7a' }}>
+                            {v.receita > 0 ? formatCurrency(v.receita) : '—'}
+                          </span>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
 
         {/* ── Tabs ─────────────────────────────────────────────────────────── */}
         <div className="flex items-center gap-1 rounded-xl p-1" style={{ background: '#FFFFFF', border: '1px solid #E0E6ED' }}>
