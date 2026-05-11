@@ -554,6 +554,7 @@ export default function KanbanPage() {
   }
 
   function tryMove(lead: Lead, newStatus: StatusFunil) {
+    if (lead.status_funil === 'fechado') return
     if (!sdrCanMove(newStatus)) return
     if (newStatus === 'reuniao_realizada') {
       setPendingReuniaoLead(lead)
@@ -734,7 +735,7 @@ export default function KanbanPage() {
                     {colLeads.map((lead) => (
                       <div
                         key={lead.id}
-                        draggable
+                        draggable={lead.status_funil !== 'fechado'}
                         onDragStart={(e) => handleDragStart(e, lead.id)}
                         onDragEnd={() => { setDragLeadId(null); setDragOverCol(null) }}
                         className={cn(dragLeadId === lead.id && 'opacity-50')}
@@ -745,8 +746,8 @@ export default function KanbanPage() {
                           alertaIds={alertaLeadIds}
                           showVendorTag={showVendorTag}
                           onClick={() => router.push(`/leads/${lead.id}`)}
-                          onMoveLeft={colIdx > 0 ? () => handleMoveLeft(lead) : undefined}
-                          onMoveRight={colIdx < FUNIL_ORDER.length - 2 ? () => handleMoveRight(lead) : undefined}
+                          onMoveLeft={colIdx > 0 && lead.status_funil !== 'fechado' ? () => handleMoveLeft(lead) : undefined}
+                          onMoveRight={colIdx < FUNIL_ORDER.length - 2 && lead.status_funil !== 'fechado' ? () => handleMoveRight(lead) : undefined}
                           onScheduleClick={() => setSchedulingLead(lead)}
                         />
                       </div>
