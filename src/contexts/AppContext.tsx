@@ -227,9 +227,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         setLeads((prev) => prev.find((l) => l.id === lead.id) ? prev : [lead, ...prev])
       })
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'leads' }, (payload) => {
-        const lead = payload.new as Lead
-        lead.score_lead = calcLeadScore(lead)
-        setLeads((prev) => prev.map((l) => l.id === lead.id ? lead : l))
+        const updates = payload.new as Partial<Lead>
+        setLeads((prev) => prev.map((l) => {
+          if (l.id !== updates.id) return l
+          const merged = { ...l, ...updates }
+          merged.score_lead = calcLeadScore(merged)
+          return merged
+        }))
       })
       .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'leads' }, (payload) => {
         setLeads((prev) => prev.filter((l) => l.id !== (payload.old as Lead).id))
@@ -535,19 +539,31 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setLeads((prev) =>
       prev.map((l) => l.id === anotacao.lead_id ? { ...l, ultima_interacao_em: now } : l)
     )
-    // Fire-and-forget
-    supabase.from('anotacoes').insert(newAnotacao)
-    supabase.from('leads').update({ ultima_interacao_em: now }).eq('id', anotacao.lead_id)
+    supabase.from('anotacoes').insert(newAnotacao).then(({ error }) => {
+      if (error) {
+        console.error('[addAnotacao] insert error:', error.message, error.details)
+        // Rollback optimistic update se o insert falhou
+        setAnotacoes((prev) => prev.filter((a) => a.id !== newAnotacao.id))
+        alert(`Erro ao salvar comentário: ${error.message}`)
+      }
+    })
+    supabase.from('leads').update({ ultima_interacao_em: now }).eq('id', anotacao.lead_id).then(({ error }) => {
+      if (error) console.error('[addAnotacao] leads update error:', error.message)
+    })
   }, [])
 
   const deleteAnotacao = useCallback((id: string) => {
     setAnotacoes((prev) => prev.filter((a) => a.id !== id))
-    supabase.from('anotacoes').delete().eq('id', id)
+    supabase.from('anotacoes').delete().eq('id', id).then(({ error }) => {
+      if (error) console.error('[deleteAnotacao] error:', error.message)
+    })
   }, [])
 
   const updateAnotacao = useCallback((id: string, texto: string) => {
     setAnotacoes((prev) => prev.map((a) => a.id === id ? { ...a, texto } : a))
-    supabase.from('anotacoes').update({ texto }).eq('id', id)
+    supabase.from('anotacoes').update({ texto }).eq('id', id).then(({ error }) => {
+      if (error) console.error('[updateAnotacao] error:', error.message)
+    })
   }, [])
 
   // ── Usuários ────────────────────────────────────────────────────────────────
