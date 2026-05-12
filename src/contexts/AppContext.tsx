@@ -539,12 +539,17 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setLeads((prev) =>
       prev.map((l) => l.id === anotacao.lead_id ? { ...l, ultima_interacao_em: now } : l)
     )
-    supabase.from('anotacoes').insert(newAnotacao).then(({ error }) => {
-      if (error) {
-        console.error('[addAnotacao] insert error:', error.message, error.details)
-        // Rollback optimistic update se o insert falhou
+    // Usa API route com service role key para ignorar RLS do Supabase
+    fetch('/api/anotacoes', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(newAnotacao),
+    }).then(async (res) => {
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: 'Erro desconhecido' }))
+        console.error('[addAnotacao] insert error:', err.error)
         setAnotacoes((prev) => prev.filter((a) => a.id !== newAnotacao.id))
-        alert(`Erro ao salvar comentário: ${error.message}`)
+        alert(`Erro ao salvar comentário: ${err.error}`)
       }
     })
     supabase.from('leads').update({ ultima_interacao_em: now }).eq('id', anotacao.lead_id).then(({ error }) => {
@@ -554,15 +559,19 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const deleteAnotacao = useCallback((id: string) => {
     setAnotacoes((prev) => prev.filter((a) => a.id !== id))
-    supabase.from('anotacoes').delete().eq('id', id).then(({ error }) => {
-      if (error) console.error('[deleteAnotacao] error:', error.message)
+    fetch(`/api/anotacoes?id=${id}`, { method: 'DELETE' }).then((res) => {
+      if (!res.ok) console.error('[deleteAnotacao] error:', res.status)
     })
   }, [])
 
   const updateAnotacao = useCallback((id: string, texto: string) => {
     setAnotacoes((prev) => prev.map((a) => a.id === id ? { ...a, texto } : a))
-    supabase.from('anotacoes').update({ texto }).eq('id', id).then(({ error }) => {
-      if (error) console.error('[updateAnotacao] error:', error.message)
+    fetch('/api/anotacoes', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, texto }),
+    }).then((res) => {
+      if (!res.ok) console.error('[updateAnotacao] error:', res.status)
     })
   }, [])
 
