@@ -435,6 +435,8 @@ export default function KanbanPage() {
   const [pendingReuniaoLead, setPendingReuniaoLead] = useState<Lead | null>(null)
   const [pendingFechadoLead, setPendingFechadoLead] = useState<Lead | null>(null)
   const [schedulingLead, setSchedulingLead] = useState<Lead | null>(null)
+  const [filterDataDe, setFilterDataDe] = useState('')
+  const [filterDataAte, setFilterDataAte] = useState('')
 
   // IDs de leads com alertas ativos
   const alertaLeadIds = new Set(
@@ -457,7 +459,10 @@ export default function KanbanPage() {
       l.telefone.includes(search)
     const matchVendedor = !filterVendedor || l.vendedor_id === filterVendedor
     const matchUTM = !filterUTM || l.utm_content === filterUTM
-    return matchSearch && matchVendedor && matchUTM
+    const leadDate = l.data_criacao ?? l.created_at?.split('T')[0] ?? ''
+    const matchDataDe = !filterDataDe || leadDate >= filterDataDe
+    const matchDataAte = !filterDataAte || leadDate <= filterDataAte
+    return matchSearch && matchVendedor && matchUTM && matchDataDe && matchDataAte
   })
 
   const isVendedor = currentUser?.tipo === 'vendedor'
@@ -651,9 +656,29 @@ export default function KanbanPage() {
               <option value="">Todos Criativos</option>
               {utmContents.map((u) => <option key={u} value={u}>{u?.replace(/_/g, ' ')}</option>)}
             </select>
-            {(filterVendedor || filterUTM) && (
+            {/* Filtro por data de inserção */}
+            <div className="flex items-center gap-1.5">
+              <Calendar size={13} className="text-[#6B7C93] flex-shrink-0" />
+              <input
+                type="date"
+                className="input !w-36 text-xs"
+                title="Data de inserção — de"
+                value={filterDataDe}
+                onChange={(e) => setFilterDataDe(e.target.value)}
+              />
+              <span className="text-[11px] text-[#6B7C93]">até</span>
+              <input
+                type="date"
+                className="input !w-36 text-xs"
+                title="Data de inserção — até"
+                value={filterDataAte}
+                onChange={(e) => setFilterDataAte(e.target.value)}
+              />
+            </div>
+
+            {(filterVendedor || filterUTM || filterDataDe || filterDataAte) && (
               <button className="text-xs text-[#6B7C93] hover:text-[#1F2D3D] flex items-center gap-1"
-                onClick={() => { setFilterVendedor(''); setFilterUTM('') }}>
+                onClick={() => { setFilterVendedor(''); setFilterUTM(''); setFilterDataDe(''); setFilterDataAte('') }}>
                 <X size={12} /> Limpar
               </button>
             )}
