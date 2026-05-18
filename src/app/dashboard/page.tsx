@@ -4,7 +4,7 @@ import AppShell from '@/components/layout/AppShell'
 import { useApp } from '@/contexts/AppContext'
 import {
   calcFunnelMetrics, calcGargalos, calcReceitaPorDimensao,
-  calcMetricasPorCriativo, formatCurrency, scoreBg, cn,
+  calcMetricasPorCriativo, calcDeclinadosPorMotivo, formatCurrency, scoreBg, cn,
 } from '@/lib/utils'
 import {
   Users, MessageCircle, Calendar, Video, CheckCircle, XCircle,
@@ -15,6 +15,7 @@ import {
 } from 'lucide-react'
 import { useEffect, useState, useRef } from 'react'
 import type { Meta } from '@/types'
+import { MOTIVO_PERDA_LABELS, MOTIVOS_DESQUALIFICANTES } from '@/types'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Cell, AreaChart, Area,
@@ -1126,6 +1127,17 @@ export default function DashboardPage() {
   const top3 = metricas.slice(0, 3)
   const worst = metricas[metricas.length - 1]
 
+  const declinadosPorMotivo = calcDeclinadosPorMotivo(filteredLeads)
+  const declinadosChartData = Object.entries(declinadosPorMotivo)
+    .map(([key, count]) => ({
+      key,
+      name: MOTIVO_PERDA_LABELS[key as keyof typeof MOTIVO_PERDA_LABELS] || key,
+      count,
+      color: MOTIVOS_DESQUALIFICANTES.has(key as any) ? RED : AMBER,
+      tipo: MOTIVOS_DESQUALIFICANTES.has(key as any) ? 'Desqualificante' : 'Recuperavel',
+    }))
+    .sort((a, b) => b.count - a.count)
+
   return (
     <AppShell>
       <div className="p-4 lg:p-6 space-y-4 lg:space-y-6 min-h-screen" style={{ background: '#F5F7FA' }}>
@@ -1621,6 +1633,54 @@ export default function DashboardPage() {
 
         {/* ── Heatmap ──────────────────────────────────────────────────────── */}
         <LeadHeatmap leads={filteredLeads} />
+
+        {/* ── Declinados por Motivo ─────────────────────────────────────────── */}
+        <div className="card p-5">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h3 className="section-title flex items-center gap-2">
+                <XCircle size={17} className="text-red-400" />
+                Declinados por Motivo
+              </h3>
+              <p className="text-xs text-text-muted mt-0.5">Por que os leads estao sendo perdidos</p>
+            </div>
+            <span className="text-xs font-semibold px-2 py-1 rounded-lg"
+              style={{ background: 'rgba(220,38,38,0.1)', color: RED }}>
+              {m.declinados} declinado{m.declinados !== 1 ? 's' : ''}
+            </span>
+          </div>
+          {m.declinados === 0 ? (
+            <p className="text-text-muted text-sm text-center py-6">Nenhum lead declinado no periodo selecionado</p>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+              <ResponsiveContainer width="100%" height={220}>
+                <BarChart data={declinadosChartData} layout="vertical" margin={{ left: 10, right: 16 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#E0E6ED" horizontal={false} />
+                  <XAxis type="number" tick={{ fill: '#6b8ab0', fontSize: 11 }} axisLine={false} tickLine={false} allowDecimals={false} />
+                  <YAxis type="category" dataKey="name" tick={{ fill: '#6b8ab0', fontSize: 11 }} axisLine={false} tickLine={false} width={120} />
+                  <Tooltip content={<ChartTooltip />} />
+                  <Bar dataKey="count" name="Leads" radius={[0, 4, 4, 0]}>
+                    {declinadosChartData.map((entry, i) => (
+                      <Cell key={i} fill={entry.color} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+              <div className="grid grid-cols-2 gap-2 content-start">
+                {declinadosChartData.map((item) => (
+                  <div key={item.key} className="rounded-xl p-3 flex items-center gap-3"
+                    style={{ background: `${item.color}12`, border: `1px solid ${item.color}30` }}>
+                    <span className="text-xl font-extrabold" style={{ color: item.color }}>{item.count}</span>
+                    <div>
+                      <p className="text-xs font-semibold text-text-primary leading-tight">{item.name}</p>
+                      <p className="text-[10px] mt-0.5" style={{ color: item.color }}>{item.tipo}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
 
         {/* ── Receita por fonte ─────────────────────────────────────────────── */}
         <div className="card p-5">

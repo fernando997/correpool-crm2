@@ -6,13 +6,16 @@ import AppShell from '@/components/layout/AppShell'
 import { useApp } from '@/contexts/AppContext'
 import {
   calcMetricasPorCriativo, calcMetricasPorCampanha,
-  calcReceitaPorDimensao, formatCurrency, cn,
+  calcReceitaPorDimensao, calcDeclinadosPorMotivo,
+  calcDeclinadosPorCriativo, calcDeclinadosPorCampanha,
+  formatCurrency, cn,
 } from '@/lib/utils'
 import {
   Trophy, AlertTriangle, ChevronUp, ChevronDown, Download,
   Star, Zap, Target, TrendingUp, TrendingDown, DollarSign, Users,
   Layers, Filter, BarChart2, Rocket, PauseCircle, Clock, FileText,
   CheckCircle, Settings2, Calendar, ArrowUpRight, X, GitCompare, Flame,
+  Ban, ChevronRight, XCircle,
 } from 'lucide-react'
 import {
   BarChart, Bar, LineChart, Line, AreaChart, Area,
@@ -20,8 +23,8 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Cell, Legend,
 } from 'recharts'
-import { FUNIL_LABELS } from '@/types'
-import type { Lead } from '@/types'
+import { FUNIL_LABELS, MOTIVO_PERDA_LABELS, MOTIVOS_DESQUALIFICANTES } from '@/types'
+import type { Lead, MotivoPerdaType } from '@/types'
 
 // ── Paleta ────────────────────────────────────────────────────────────────────
 const BLUE    = '#2563eb'
@@ -74,7 +77,8 @@ function getHourSP(ts: string): number {
   } catch { return 9 }
 }
 
-type Tab = 'campanhas' | 'criativos' | 'decisao' | 'calor'
+type Tab = 'campanhas' | 'criativos' | 'decisao' | 'calor' | 'declinados'
+type DeclinadosSubView = 'geral' | 'criativo' | 'campanha'
 type HeatMetric = 'leads' | 'agendamentos' | 'vendas'
 type Period = 'todos' | '7d' | '30d' | '90d' | 'custom'
 type SortKey =
@@ -678,6 +682,94 @@ function heatTextColor(val: number, maxVal: number): string {
   return pct >= 0.35 ? '#fff' : '#1F2D3D'
 }
 
+// ── DeclinadosLeadPanel ───────────────────────────────────────────────────────
+function DeclinadosLeadPanel({
+  titulo, leads, users, onClose, onExport, inline,
+}: {
+  titulo: string
+  leads: Lead[]
+  users: { id: string; nome: string }[]
+  onClose: () => void
+  onExport: () => void
+  inline?: boolean
+}) {
+  const router = useRouter()
+  const getName = (id: string) => users.find((u) => u.id === id)?.nome?.split(' ')[0] || '—'
+
+  const content = (
+    <div className={cn(inline ? 'border-t' : 'card')}
+      style={inline ? { borderColor: '#E0E6ED', background: '#FAFBFC' } : {}}>
+      <div className="flex items-center justify-between px-5 py-3"
+        style={{ borderBottom: '1px solid #E0E6ED' }}>
+        <div>
+          <p className="text-xs font-bold text-text-muted uppercase tracking-widest">Lista de leads</p>
+          <p className="text-sm font-semibold text-text-bright">{titulo}</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <button onClick={onExport}
+            className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg transition-all hover:opacity-80"
+            style={{ background: 'rgba(220,38,38,0.1)', color: RED, border: `1px solid ${RED}30` }}>
+            <Download size={12} /> Exportar XLS
+          </button>
+          <button onClick={onClose}
+            className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-[#F5F7FA] transition-colors">
+            <X size={14} style={{ color: '#6B7C93' }} />
+          </button>
+        </div>
+      </div>
+      {leads.length === 0 ? (
+        <p className="text-text-muted text-sm text-center py-6">Sem leads para mostrar</p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead>
+              <tr style={{ background: '#F5F7FA', borderBottom: '1px solid #E0E6ED' }}>
+                {['Nome', 'Motivo', 'Criativo', 'Campanha', 'Vendedor', 'Data Declínio'].map((h) => (
+                  <th key={h} className="text-left px-4 py-2.5 text-[9px] font-bold uppercase tracking-widest text-[#A0AEC0]">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {leads.map((l) => {
+                const isDesq = MOTIVOS_DESQUALIFICANTES.has(l.motivo_perda as MotivoPerdaType)
+                const motColor = isDesq ? RED : AMBER
+                return (
+                  <tr key={l.id}
+                    onClick={() => router.push(`/leads/${l.id}`)}
+                    className="cursor-pointer hover:bg-[#F5F7FA] transition-colors"
+                    style={{ borderBottom: '1px solid #F5F7FA' }}>
+                    <td className="px-4 py-3 text-xs font-semibold text-text-primary max-w-[140px] truncate">{l.nome}</td>
+                    <td className="px-4 py-3">
+                      <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full"
+                        style={{ background: `${motColor}15`, color: motColor }}>
+                        {MOTIVO_PERDA_LABELS[l.motivo_perda as MotivoPerdaType] || l.motivo_perda || '—'}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-xs text-text-muted">{l.utm_content || '—'}</td>
+                    <td className="px-4 py-3 text-xs text-text-muted">{campLabel(l.utm_campaign || '')}</td>
+                    <td className="px-4 py-3 text-xs text-text-muted">{getName(l.vendedor_id)}</td>
+                    <td className="px-4 py-3 text-[10px] font-mono text-[#A0AEC0]">
+                      {(l.ultima_interacao_em || l.data_criacao).slice(0, 10)}
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  )
+
+  if (inline) return content
+
+  return (
+    <div className="mt-3">
+      {content}
+    </div>
+  )
+}
+
 // ── Página Principal ──────────────────────────────────────────────────────────
 export default function MarketingPage() {
   const { leads: allLeads, users, currentUser } = useApp()
@@ -717,6 +809,8 @@ export default function MarketingPage() {
   const [campSortDir, setCampSortDir] = useState<SortDir>('desc')
   const [crSubSortKey, setCrSubSortKey] = useState<SortKey>('score')
   const [crSubSortDir, setCrSubSortDir] = useState<SortDir>('desc')
+  const [declinadosSubView, setDeclinadosSubView] = useState<DeclinadosSubView>('geral')
+  const [expandedDeclinadoRow, setExpandedDeclinadoRow] = useState<string | null>(null)
 
   // ── Filtro por período ─────────────────────────────────────────────────────
   const maxDate = useMemo(() => {
@@ -779,6 +873,13 @@ export default function MarketingPage() {
   const campanhas    = useMemo(() => calcMetricasPorCampanha(filteredLeads), [filteredLeads])
   const criativos    = useMemo(() => calcMetricasPorCriativo(filteredLeads), [filteredLeads])
   const receitaFonte = useMemo(() => calcReceitaPorDimensao(filteredLeads, 'utm_source'), [filteredLeads])
+  const declinadosPorMotivo   = useMemo(() => calcDeclinadosPorMotivo(filteredLeads), [filteredLeads])
+  const declinadosPorCriativo = useMemo(() => calcDeclinadosPorCriativo(filteredLeads), [filteredLeads])
+  const declinadosPorCampanha = useMemo(() => calcDeclinadosPorCampanha(filteredLeads), [filteredLeads])
+  const totalDeclinados = useMemo(
+    () => filteredLeads.filter((l) => l.status_funil === 'declinado').length,
+    [filteredLeads]
+  )
 
   const totalLeads    = filteredLeads.length
   const totalReceita  = campanhas.reduce((s, c) => s + c.receita_total, 0)
@@ -907,6 +1008,19 @@ export default function MarketingPage() {
       Score: m.score.toFixed(1),
     }))
     downloadXLS(rows, 'relatorio-criativos.xls')
+  }
+
+  function exportDeclinados(leadsToExport: Lead[]) {
+    const rows = leadsToExport.map((l) => ({
+      Nome: l.nome,
+      Motivo: MOTIVO_PERDA_LABELS[(l.motivo_perda as MotivoPerdaType)] || l.motivo_perda || '—',
+      Tipo: MOTIVOS_DESQUALIFICANTES.has(l.motivo_perda as MotivoPerdaType) ? 'Desqualificante' : 'Recuperavel',
+      Criativo: l.utm_content || '—',
+      Campanha: l.utm_campaign || '—',
+      Vendedor: users.find((u) => u.id === l.vendedor_id)?.nome || '—',
+      'Data Declinio': l.ultima_interacao_em?.slice(0, 10) || l.data_criacao,
+    }))
+    downloadXLS(rows, 'leads-declinados.xls')
   }
 
   function exportDecisao() {
@@ -1366,10 +1480,11 @@ export default function MarketingPage() {
         {/* ── Tabs ─────────────────────────────────────────────────────────── */}
         <div className="flex items-center gap-1 rounded-xl p-1" style={{ background: '#FFFFFF', border: '1px solid #E0E6ED' }}>
           {([
-            { id: 'campanhas', label: 'Por Campanha',     icon: BarChart2 },
-            { id: 'criativos', label: 'Por Criativo',     icon: Layers },
-            { id: 'decisao',   label: 'Decisão',          icon: Rocket },
-            { id: 'calor',     label: 'Mapa de Calor',    icon: Flame },
+            { id: 'campanhas',  label: 'Por Campanha',     icon: BarChart2 },
+            { id: 'criativos',  label: 'Por Criativo',     icon: Layers },
+            { id: 'decisao',    label: 'Decisão',          icon: Rocket },
+            { id: 'calor',      label: 'Mapa de Calor',    icon: Flame },
+            { id: 'declinados', label: 'Declinados',       icon: Ban },
           ] as { id: Tab; label: string; icon: React.ElementType }[]).map(({ id, label, icon: Icon }) => (
             <button key={id} onClick={() => setTab(id)}
               className={cn('flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold transition-all flex-1 justify-center',
@@ -2494,6 +2609,333 @@ export default function MarketingPage() {
                 </div>
               </div>
             </div>
+
+          </div>
+        )}
+
+        {/* ══════════════════════════════════════════════════════════════════ */}
+        {/* TAB: DECLINADOS                                                   */}
+        {/* ══════════════════════════════════════════════════════════════════ */}
+        {tab === 'declinados' && (
+          <div className="space-y-5">
+
+            {/* ── Header + sub-view toggle ──────────────────────────────── */}
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h2 className="text-lg font-bold text-text-bright flex items-center gap-2">
+                  <Ban size={18} style={{ color: RED }} />
+                  Análise de Leads Declinados
+                </h2>
+                <p className="text-xs text-text-muted mt-0.5">
+                  {totalDeclinados} lead{totalDeclinados !== 1 ? 's' : ''} declinado{totalDeclinados !== 1 ? 's' : ''} no período
+                </p>
+              </div>
+              <div className="flex items-center gap-1 rounded-lg p-1" style={{ background: '#FFFFFF', border: '1px solid #E0E6ED' }}>
+                {([
+                  { id: 'geral',    label: 'Geral' },
+                  { id: 'criativo', label: 'Por Criativo' },
+                  { id: 'campanha', label: 'Por Campanha' },
+                ] as { id: DeclinadosSubView; label: string }[]).map(({ id, label }) => (
+                  <button key={id} onClick={() => { setDeclinadosSubView(id); setExpandedDeclinadoRow(null) }}
+                    className="px-3 py-1.5 rounded-md text-xs font-semibold transition-all"
+                    style={declinadosSubView === id
+                      ? { background: RED, color: '#fff' }
+                      : { color: '#6B7C93' }}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {totalDeclinados === 0 ? (
+              <div className="card p-10 text-center">
+                <XCircle size={40} className="mx-auto mb-3 opacity-30" style={{ color: RED }} />
+                <p className="text-text-muted font-semibold">Nenhum lead declinado no período</p>
+                <p className="text-xs text-text-dim mt-1">Ajuste os filtros de período para ver dados</p>
+              </div>
+            ) : (
+              <>
+                {/* ── SUB-VIEW: GERAL ─────────────────────────────────── */}
+                {declinadosSubView === 'geral' && (() => {
+                  const motivos = Object.entries(declinadosPorMotivo)
+                    .map(([key, count]) => ({
+                      key,
+                      label: MOTIVO_PERDA_LABELS[key as MotivoPerdaType] || key,
+                      count,
+                      pct: totalDeclinados > 0 ? (count / totalDeclinados) * 100 : 0,
+                      isDesq: MOTIVOS_DESQUALIFICANTES.has(key as MotivoPerdaType),
+                      color: MOTIVOS_DESQUALIFICANTES.has(key as MotivoPerdaType) ? RED : AMBER,
+                    }))
+                    .sort((a, b) => b.count - a.count)
+
+                  const pieData = motivos.map((m) => ({ name: m.label, value: m.count, color: m.color }))
+
+                  return (
+                    <div className="space-y-5">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                        {/* Pie chart */}
+                        <div className="card p-5">
+                          <h3 className="section-title mb-4">Proporção por Motivo</h3>
+                          <ResponsiveContainer width="100%" height={220}>
+                            <PieChart>
+                              <Pie data={pieData} dataKey="value" nameKey="name"
+                                cx="50%" cy="50%" outerRadius={80} innerRadius={40}>
+                                {pieData.map((entry, i) => (
+                                  <Cell key={i} fill={entry.color} />
+                                ))}
+                              </Pie>
+                              <Tooltip content={<ChartTooltip />} />
+                              <Legend iconType="circle" iconSize={8}
+                                formatter={(v) => <span style={{ fontSize: 11, color: '#6B7C93' }}>{v}</span>} />
+                            </PieChart>
+                          </ResponsiveContainer>
+                        </div>
+
+                        {/* Tabela resumo */}
+                        <div className="card overflow-hidden">
+                          <div className="flex items-center justify-between px-5 py-3"
+                            style={{ borderBottom: '1px solid #E0E6ED' }}>
+                            <h3 className="section-title">Resumo por Motivo</h3>
+                            <button onClick={() => exportDeclinados(filteredLeads.filter((l) => l.status_funil === 'declinado'))}
+                              className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg transition-all hover:opacity-80"
+                              style={{ background: 'rgba(220,38,38,0.1)', color: RED, border: `1px solid ${RED}30` }}>
+                              <Download size={12} /> Exportar XLS
+                            </button>
+                          </div>
+                          <table className="w-full">
+                            <thead>
+                              <tr style={{ background: '#F5F7FA', borderBottom: '1px solid #E0E6ED' }}>
+                                {['Motivo', 'Qtd', '%', 'Tipo'].map((h) => (
+                                  <th key={h} className="text-left px-4 py-2.5 text-[9px] font-bold uppercase tracking-widest text-[#A0AEC0]">{h}</th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {motivos.map((m) => (
+                                <tr key={m.key}
+                                  onClick={() => setExpandedDeclinadoRow(expandedDeclinadoRow === m.key ? null : m.key)}
+                                  className="cursor-pointer hover:bg-[#F5F7FA] transition-colors"
+                                  style={{ borderBottom: '1px solid #F5F7FA' }}>
+                                  <td className="px-4 py-3 text-xs font-semibold text-text-primary">{m.label}</td>
+                                  <td className="px-4 py-3 text-sm font-bold" style={{ color: m.color }}>{m.count}</td>
+                                  <td className="px-4 py-3">
+                                    <PercentBar value={m.pct} color={m.color} />
+                                  </td>
+                                  <td className="px-4 py-3">
+                                    <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full"
+                                      style={{ background: `${m.color}15`, color: m.color }}>
+                                      {m.isDesq ? 'Desqualificante' : 'Recuperavel'}
+                                    </span>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+
+                      {/* Lista expandida de leads por motivo */}
+                      {expandedDeclinadoRow && (() => {
+                        const leadsDoMotivo = filteredLeads.filter(
+                          (l) => l.status_funil === 'declinado' && (l.motivo_perda || 'sem_motivo') === expandedDeclinadoRow
+                        )
+                        return (
+                          <DeclinadosLeadPanel
+                            titulo={MOTIVO_PERDA_LABELS[expandedDeclinadoRow as MotivoPerdaType] || expandedDeclinadoRow}
+                            leads={leadsDoMotivo}
+                            users={users}
+                            onClose={() => setExpandedDeclinadoRow(null)}
+                            onExport={() => exportDeclinados(leadsDoMotivo)}
+                          />
+                        )
+                      })()}
+                    </div>
+                  )
+                })()}
+
+                {/* ── SUB-VIEW: POR CRIATIVO ──────────────────────────── */}
+                {declinadosSubView === 'criativo' && (() => {
+                  const allMotivos = Object.keys(MOTIVO_PERDA_LABELS) as MotivoPerdaType[]
+                  const rows = declinadosPorCriativo.filter((r) => r.total > 0)
+                  const maxTotal = Math.max(...rows.map((r) => r.total), 1)
+
+                  return (
+                    <div className="space-y-3">
+                      <div className="card overflow-hidden">
+                        <div className="flex items-center justify-between px-5 py-3"
+                          style={{ borderBottom: '1px solid #E0E6ED' }}>
+                          <h3 className="section-title">Declinados por Criativo × Motivo</h3>
+                        </div>
+                        <div className="overflow-x-auto">
+                          <table className="w-full">
+                            <thead>
+                              <tr style={{ background: '#F5F7FA', borderBottom: '1px solid #E0E6ED' }}>
+                                <th className="text-left px-4 py-2.5 text-[9px] font-bold uppercase tracking-widest text-[#A0AEC0] min-w-[130px]">Criativo</th>
+                                {allMotivos.map((m) => (
+                                  <th key={m} className="text-center px-2 py-2.5 text-[9px] font-bold uppercase tracking-widest text-[#A0AEC0] min-w-[70px]">
+                                    {MOTIVO_PERDA_LABELS[m].split(' ').slice(0, 2).join(' ')}
+                                  </th>
+                                ))}
+                                <th className="text-right px-4 py-2.5 text-[9px] font-bold uppercase tracking-widest text-[#A0AEC0]">Total</th>
+                                <th className="text-right px-4 py-2.5 text-[9px] font-bold uppercase tracking-widest text-[#A0AEC0]">% Decl.</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {rows.map((row) => (
+                                <React.Fragment key={row.criativo}>
+                                  <tr
+                                    onClick={() => setExpandedDeclinadoRow(expandedDeclinadoRow === row.criativo ? null : row.criativo)}
+                                    className="cursor-pointer hover:bg-[#F5F7FA] transition-colors"
+                                    style={{ borderBottom: '1px solid #F5F7FA' }}>
+                                    <td className="px-4 py-3 text-xs font-semibold text-text-primary">
+                                      <div className="flex items-center gap-1.5">
+                                        <ChevronRight size={12} className="flex-shrink-0 transition-transform"
+                                          style={{ color: '#A0AEC0', transform: expandedDeclinadoRow === row.criativo ? 'rotate(90deg)' : 'none' }} />
+                                        {CRIATIVO_LABELS[row.criativo] || row.criativo}
+                                      </div>
+                                    </td>
+                                    {allMotivos.map((m) => {
+                                      const v = row.por_motivo[m] || 0
+                                      const isDesq = MOTIVOS_DESQUALIFICANTES.has(m)
+                                      const color = isDesq ? RED : AMBER
+                                      return (
+                                        <td key={m} className="px-2 py-3 text-center">
+                                          {v > 0 ? (
+                                            <span className="text-xs font-bold" style={{ color }}>{v}</span>
+                                          ) : (
+                                            <span className="text-[10px] text-text-dim">—</span>
+                                          )}
+                                        </td>
+                                      )
+                                    })}
+                                    <td className="px-4 py-3 text-right">
+                                      <div className="flex items-center justify-end gap-2">
+                                        <div className="w-16 h-1.5 rounded-full flex-shrink-0" style={{ background: '#E0E6ED' }}>
+                                          <div className="h-1.5 rounded-full" style={{ width: `${(row.total / maxTotal) * 100}%`, background: RED }} />
+                                        </div>
+                                        <span className="text-sm font-bold" style={{ color: RED }}>{row.total}</span>
+                                      </div>
+                                    </td>
+                                    <td className="px-4 py-3 text-right text-xs font-semibold" style={{ color: row.taxa_declinacao >= 30 ? RED : AMBER }}>
+                                      {row.taxa_declinacao.toFixed(0)}%
+                                    </td>
+                                  </tr>
+                                  {expandedDeclinadoRow === row.criativo && (
+                                    <tr key={`${row.criativo}-expanded`}>
+                                      <td colSpan={allMotivos.length + 3} className="p-0">
+                                        <DeclinadosLeadPanel
+                                          titulo={`Declinados — ${CRIATIVO_LABELS[row.criativo] || row.criativo}`}
+                                          leads={row.leads_declinados}
+                                          users={users}
+                                          onClose={() => setExpandedDeclinadoRow(null)}
+                                          onExport={() => exportDeclinados(row.leads_declinados)}
+                                          inline
+                                        />
+                                      </td>
+                                    </tr>
+                                  )}
+                                </React.Fragment>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })()}
+
+                {/* ── SUB-VIEW: POR CAMPANHA ──────────────────────────── */}
+                {declinadosSubView === 'campanha' && (() => {
+                  const allMotivos = Object.keys(MOTIVO_PERDA_LABELS) as MotivoPerdaType[]
+                  const rows = declinadosPorCampanha.filter((r) => r.total > 0)
+                  const maxTotal = Math.max(...rows.map((r) => r.total), 1)
+
+                  return (
+                    <div className="space-y-3">
+                      <div className="card overflow-hidden">
+                        <div className="flex items-center justify-between px-5 py-3"
+                          style={{ borderBottom: '1px solid #E0E6ED' }}>
+                          <h3 className="section-title">Declinados por Campanha × Motivo</h3>
+                        </div>
+                        <div className="overflow-x-auto">
+                          <table className="w-full">
+                            <thead>
+                              <tr style={{ background: '#F5F7FA', borderBottom: '1px solid #E0E6ED' }}>
+                                <th className="text-left px-4 py-2.5 text-[9px] font-bold uppercase tracking-widest text-[#A0AEC0] min-w-[140px]">Campanha</th>
+                                {allMotivos.map((m) => (
+                                  <th key={m} className="text-center px-2 py-2.5 text-[9px] font-bold uppercase tracking-widest text-[#A0AEC0] min-w-[70px]">
+                                    {MOTIVO_PERDA_LABELS[m].split(' ').slice(0, 2).join(' ')}
+                                  </th>
+                                ))}
+                                <th className="text-right px-4 py-2.5 text-[9px] font-bold uppercase tracking-widest text-[#A0AEC0]">Total</th>
+                                <th className="text-right px-4 py-2.5 text-[9px] font-bold uppercase tracking-widest text-[#A0AEC0]">% Decl.</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {rows.map((row) => (
+                                <React.Fragment key={row.campanha}>
+                                  <tr
+                                    onClick={() => setExpandedDeclinadoRow(expandedDeclinadoRow === row.campanha ? null : row.campanha)}
+                                    className="cursor-pointer hover:bg-[#F5F7FA] transition-colors"
+                                    style={{ borderBottom: '1px solid #F5F7FA' }}>
+                                    <td className="px-4 py-3 text-xs font-semibold text-text-primary">
+                                      <div className="flex items-center gap-1.5">
+                                        <ChevronRight size={12} className="flex-shrink-0 transition-transform"
+                                          style={{ color: '#A0AEC0', transform: expandedDeclinadoRow === row.campanha ? 'rotate(90deg)' : 'none' }} />
+                                        {campLabel(row.campanha)}
+                                      </div>
+                                    </td>
+                                    {allMotivos.map((m) => {
+                                      const v = row.por_motivo[m] || 0
+                                      const isDesq = MOTIVOS_DESQUALIFICANTES.has(m)
+                                      const color = isDesq ? RED : AMBER
+                                      return (
+                                        <td key={m} className="px-2 py-3 text-center">
+                                          {v > 0 ? (
+                                            <span className="text-xs font-bold" style={{ color }}>{v}</span>
+                                          ) : (
+                                            <span className="text-[10px] text-text-dim">—</span>
+                                          )}
+                                        </td>
+                                      )
+                                    })}
+                                    <td className="px-4 py-3 text-right">
+                                      <div className="flex items-center justify-end gap-2">
+                                        <div className="w-16 h-1.5 rounded-full flex-shrink-0" style={{ background: '#E0E6ED' }}>
+                                          <div className="h-1.5 rounded-full" style={{ width: `${(row.total / maxTotal) * 100}%`, background: RED }} />
+                                        </div>
+                                        <span className="text-sm font-bold" style={{ color: RED }}>{row.total}</span>
+                                      </div>
+                                    </td>
+                                    <td className="px-4 py-3 text-right text-xs font-semibold" style={{ color: row.taxa_declinacao >= 30 ? RED : AMBER }}>
+                                      {row.taxa_declinacao.toFixed(0)}%
+                                    </td>
+                                  </tr>
+                                  {expandedDeclinadoRow === row.campanha && (
+                                    <tr key={`${row.campanha}-expanded`}>
+                                      <td colSpan={allMotivos.length + 3} className="p-0">
+                                        <DeclinadosLeadPanel
+                                          titulo={`Declinados — ${campLabel(row.campanha)}`}
+                                          leads={row.leads_declinados}
+                                          users={users}
+                                          onClose={() => setExpandedDeclinadoRow(null)}
+                                          onExport={() => exportDeclinados(row.leads_declinados)}
+                                          inline
+                                        />
+                                      </td>
+                                    </tr>
+                                  )}
+                                </React.Fragment>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })()}
+              </>
+            )}
 
           </div>
         )}

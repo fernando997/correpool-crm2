@@ -449,6 +449,80 @@ export function isLeadParado(lead: Lead): boolean {
   return hours > 24
 }
 
+// ─── ANÁLISE DE DECLINADOS POR MOTIVO ────────────────────────────────────────
+export function calcDeclinadosPorMotivo(leads: Lead[]): Record<string, number> {
+  const result: Record<string, number> = {}
+  for (const lead of leads.filter((l) => l.status_funil === 'declinado')) {
+    const motivo = lead.motivo_perda || 'sem_motivo'
+    result[motivo] = (result[motivo] || 0) + 1
+  }
+  return result
+}
+
+export function calcDeclinadosPorCriativo(leads: Lead[]): Array<{
+  criativo: string
+  total: number
+  total_leads: number
+  por_motivo: Record<string, number>
+  taxa_declinacao: number
+  leads_declinados: Lead[]
+}> {
+  const grouped: Record<string, Lead[]> = {}
+  for (const lead of leads) {
+    const key = lead.utm_content || 'sem_criativo'
+    if (!grouped[key]) grouped[key] = []
+    grouped[key].push(lead)
+  }
+  return Object.entries(grouped).map(([criativo, grupo]) => {
+    const declinados = grupo.filter((l) => l.status_funil === 'declinado')
+    const por_motivo: Record<string, number> = {}
+    for (const lead of declinados) {
+      const m = (lead.motivo_perda as string) || 'sem_motivo'
+      por_motivo[m] = (por_motivo[m] || 0) + 1
+    }
+    return {
+      criativo,
+      total: declinados.length,
+      total_leads: grupo.length,
+      por_motivo,
+      taxa_declinacao: grupo.length > 0 ? (declinados.length / grupo.length) * 100 : 0,
+      leads_declinados: declinados,
+    }
+  }).sort((a, b) => b.total - a.total)
+}
+
+export function calcDeclinadosPorCampanha(leads: Lead[]): Array<{
+  campanha: string
+  total: number
+  total_leads: number
+  por_motivo: Record<string, number>
+  taxa_declinacao: number
+  leads_declinados: Lead[]
+}> {
+  const grouped: Record<string, Lead[]> = {}
+  for (const lead of leads) {
+    const key = lead.utm_campaign || 'sem_campanha'
+    if (!grouped[key]) grouped[key] = []
+    grouped[key].push(lead)
+  }
+  return Object.entries(grouped).map(([campanha, grupo]) => {
+    const declinados = grupo.filter((l) => l.status_funil === 'declinado')
+    const por_motivo: Record<string, number> = {}
+    for (const lead of declinados) {
+      const m = (lead.motivo_perda as string) || 'sem_motivo'
+      por_motivo[m] = (por_motivo[m] || 0) + 1
+    }
+    return {
+      campanha,
+      total: declinados.length,
+      total_leads: grupo.length,
+      por_motivo,
+      taxa_declinacao: grupo.length > 0 ? (declinados.length / grupo.length) * 100 : 0,
+      leads_declinados: declinados,
+    }
+  }).sort((a, b) => b.total - a.total)
+}
+
 // Detecta se follow-up está atrasado (> 48h em etapa de followup)
 export function isFollowupAtrasado(lead: Lead): boolean {
   if (!['followup1', 'followup2', 'followup3'].includes(lead.status_funil)) return false
