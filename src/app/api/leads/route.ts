@@ -47,6 +47,7 @@ export async function POST(req: NextRequest) {
   // ── Monta o lead (temperatura sempre 'frio') ─────────────────
   const now = new Date()
   const lead = {
+    id:              crypto.randomUUID(),
     nome:            body.nome as string,
     telefone:        body.telefone as string,
     email:           (body.email as string) ?? '',

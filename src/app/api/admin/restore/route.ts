@@ -39,5 +39,8 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  // Reset sequence to avoid duplicate key on next API insert
+  await supabase.rpc('reset_leads_api_seq')
+
   return NextResponse.json({ success: true, restored: leads.length })
 }
