@@ -7,10 +7,11 @@ import { FUNIL_LABELS, FUNIL_ORDER, TEMPERATURA_COLORS, TEMPERATURA_LABELS, type
 import { cn, formatCurrency, formatDuration, scoreBg } from '@/lib/utils'
 import {
   Phone, Calendar, ChevronDown, Plus, Search, X, Tag, GripVertical,
-  Clock, AlertTriangle, DollarSign, CheckCircle, Thermometer, Download, CalendarClock,
+  Clock, AlertTriangle, DollarSign, CheckCircle, Thermometer, Download, CalendarClock, ArrowRightLeft,
 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import AddLeadModal from '@/components/leads/AddLeadModal'
+import TransferLeadModal from '@/components/leads/TransferLeadModal'
 
 const TEMP_EMOJI: Record<string, string> = {
   frio: '🔵', morno: '🟡', quente: '🟠', muito_quente: '🔴', desqualificado: '⚫',
@@ -252,16 +253,18 @@ function ScoreBadge({ score }: { score: number }) {
 }
 
 function LeadCard({
-  lead, users, alertaIds, showVendorTag, onClick, onMoveLeft, onMoveRight, onScheduleClick,
+  lead, users, alertaIds, showVendorTag, canTransfer, onClick, onMoveLeft, onMoveRight, onScheduleClick, onTransferClick,
 }: {
   lead: Lead
   users: ReturnType<typeof useApp>['users']
   alertaIds: Set<string>
   showVendorTag: boolean
+  canTransfer: boolean
   onClick: () => void
   onMoveLeft?: () => void
   onMoveRight?: () => void
   onScheduleClick?: () => void
+  onTransferClick?: () => void
 }) {
   const vendedor = users.find((u) => u.id === lead.vendedor_id)
   const tempColor = TEMPERATURA_COLORS[lead.temperatura]
@@ -376,6 +379,15 @@ function LeadCard({
           <span className="text-[10px] text-[#A0AEC0]">{vendedor?.nome.split(' ')[0]}</span>
         </div>
         <div className="flex items-center gap-1">
+          {canTransfer && onTransferClick && (
+            <button
+              onClick={(e) => { e.stopPropagation(); onTransferClick() }}
+              className="w-5 h-5 rounded opacity-0 group-hover:opacity-100 bg-[#D1D9E6] hover:bg-indigo-500/20 flex items-center justify-center text-[#6B7C93] hover:text-indigo-500 transition-colors"
+              title="Transferir lead"
+            >
+              <ArrowRightLeft size={10} />
+            </button>
+          )}
           {isFollowupStage && onScheduleClick && (
             <button
               onClick={(e) => { e.stopPropagation(); onScheduleClick() }}
@@ -424,7 +436,7 @@ const COL_COLORS: Partial<Record<StatusFunil, string>> = {
 }
 
 export default function KanbanPage() {
-  const { leads, moveLead, updateLead, users, currentUser, alertas } = useApp()
+  const { leads, moveLead, updateLead, transferLead, users, currentUser, alertas } = useApp()
   const router = useRouter()
   const [showModal, setShowModal] = useState(false)
   const [search, setSearch] = useState('')
@@ -437,6 +449,7 @@ export default function KanbanPage() {
   const [schedulingLead, setSchedulingLead] = useState<Lead | null>(null)
   const [filterDataDe, setFilterDataDe] = useState('')
   const [filterDataAte, setFilterDataAte] = useState('')
+  const [transferingLead, setTransferingLead] = useState<Lead | null>(null)
 
   // IDs de leads com alertas ativos
   const alertaLeadIds = new Set(
@@ -468,6 +481,7 @@ export default function KanbanPage() {
   const isVendedor = currentUser?.tipo === 'vendedor'
   const isSdr      = currentUser?.tipo === 'sdr'
   const isAdmin    = currentUser?.tipo === 'admin'
+  const canTransfer = isAdmin || (isSdr && currentUser?.pode_transferir === true)
 
   function exportToExcel() {
     const FUNIL_PT: Record<string, string> = {
@@ -770,10 +784,12 @@ export default function KanbanPage() {
                           users={users}
                           alertaIds={alertaLeadIds}
                           showVendorTag={showVendorTag}
+                          canTransfer={canTransfer}
                           onClick={() => router.push(`/leads/${lead.id}`)}
                           onMoveLeft={colIdx > 0 && lead.status_funil !== 'fechado' ? () => handleMoveLeft(lead) : undefined}
                           onMoveRight={colIdx < FUNIL_ORDER.length - 2 && lead.status_funil !== 'fechado' ? () => handleMoveRight(lead) : undefined}
                           onScheduleClick={() => setSchedulingLead(lead)}
+                          onTransferClick={canTransfer ? () => setTransferingLead(lead) : undefined}
                         />
                       </div>
                     ))}
@@ -801,6 +817,17 @@ export default function KanbanPage() {
         />
       )}
       {showModal && <AddLeadModal onClose={() => setShowModal(false)} />}
+      {transferingLead && (
+        <TransferLeadModal
+          lead={transferingLead}
+          vendedores={users}
+          onConfirm={async (newVendedorId) => {
+            await transferLead(transferingLead.id, newVendedorId)
+            setTransferingLead(null)
+          }}
+          onClose={() => setTransferingLead(null)}
+        />
+      )}
       {pendingReuniaoLead && (
         <ConfirmTempModal
           onConfirm={(temp) => {

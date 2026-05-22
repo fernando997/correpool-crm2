@@ -51,6 +51,7 @@ export interface User {
   ativo?: boolean
   google_refresh_token?: string
   google_email?: string
+  pode_transferir?: boolean
 }
 
 export interface Lead {

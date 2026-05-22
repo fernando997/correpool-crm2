@@ -42,6 +42,7 @@ interface AppContextType {
   moveLead: (id: string, newStatus: StatusFunil, extra?: Partial<Lead>) => void
   addLead: (lead: Omit<Lead, 'id' | 'data_criacao'>) => Promise<void>
   deleteLead: (id: string) => Promise<void>
+  transferLead: (leadId: string, newVendedorId: string) => Promise<void>
   anotacoes: Anotacao[]
   addAnotacao: (anotacao: Omit<Anotacao, 'id' | 'created_at'>) => void
   deleteAnotacao: (id: string) => void
@@ -105,7 +106,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
       try {
         const results = await Promise.all([
-          supabase.from('users').select('id, nome, email, tipo, vendedor_vinculado, ativo'),
+          supabase.from('users').select('id, nome, email, tipo, vendedor_vinculado, ativo, pode_transferir'),
           supabase.from('leads').select('*'),
           supabase.from('anotacoes').select('*'),
           supabase.from('historico_movimentacoes').select('*'),
@@ -178,6 +179,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         tipo: u.tipo as User['tipo'],
         vendedorVinculado: (u.vendedor_vinculado as string) ?? undefined,
         ativo: u.ativo !== false,
+        pode_transferir: (u.pode_transferir as boolean) ?? false,
       }))
       setUsers(mappedUsers)
 
@@ -321,7 +323,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const login = useCallback(async (email: string, senha: string): Promise<string | null> => {
     const { data, error } = await supabase
       .from('users')
-      .select('id, nome, email, tipo, vendedor_vinculado, ativo')
+      .select('id, nome, email, tipo, vendedor_vinculado, ativo, pode_transferir')
       .eq('email', email)
       .eq('senha', senha)
       .maybeSingle()
@@ -364,6 +366,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       tipo: data.tipo,
       vendedorVinculado: data.vendedor_vinculado ?? undefined,
       ativo: data.ativo !== false,
+      pode_transferir: (data as Record<string, unknown>).pode_transferir as boolean ?? false,
       google_refresh_token,
       google_email,
     }
@@ -515,6 +518,27 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     },
     [currentUser]
   )
+
+  // ── Transfer lead ────────────────────────────────────────────────────────────
+  const transferLead = useCallback(async (leadId: string, newVendedorId: string): Promise<void> => {
+    let snapshot: Lead[] = []
+    setLeads((prev) => {
+      snapshot = prev
+      return prev.map((l) => l.id === leadId ? { ...l, vendedor_id: newVendedorId } : l)
+    })
+
+    const res = await fetch('/api/leads/transfer', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ leadId, newVendedorId, currentUserId: currentUser?.id }),
+    })
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: 'Erro desconhecido' }))
+      setLeads(snapshot)
+      alert(`Erro ao transferir lead: ${err.error}`)
+    }
+  }, [currentUser])
 
   // ── Delete lead ─────────────────────────────────────────────────────────────
   const deleteLead = useCallback(async (id: string): Promise<void> => {
@@ -707,7 +731,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       value={{
         currentUser, login, logout,
         googleConnected, refreshGoogleConnection,
-        leads, updateLead, moveLead, addLead, deleteLead,
+        leads, updateLead, moveLead, addLead, deleteLead, transferLead,
         anotacoes, addAnotacao, deleteAnotacao, updateAnotacao,
         historico,
         users, addUser, updateUser, toggleUserAtivo,

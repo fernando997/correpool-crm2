@@ -24,8 +24,9 @@ import {
 import {
   ArrowLeft, Phone, Mail, Clock, ChevronRight, Send, Thermometer, Video,
   DollarSign, CheckCircle, XCircle, Edit3, Save, X, User, Calendar,
-  AlertTriangle, Bell, Zap, TrendingUp, Trash2, CalendarClock, Pencil,
+  AlertTriangle, Bell, Zap, TrendingUp, Trash2, CalendarClock, Pencil, ArrowRightLeft,
 } from 'lucide-react'
+import TransferLeadModal from '@/components/leads/TransferLeadModal'
 
 const TEMP_EMOJI: Record<string, string> = {
   frio: '🔵', morno: '🟡', quente: '🟠', muito_quente: '🔴', desqualificado: '⚫',
@@ -360,7 +361,7 @@ export default function LeadDetailPage() {
 
 function LeadDetailContent({ lead }: { lead: Lead }) {
   const router = useRouter()
-  const { users, anotacoes, historico, alertas, resolveAlerta, updateLead, moveLead, addAnotacao, deleteAnotacao, updateAnotacao, deleteLead, currentUser } = useApp()
+  const { users, anotacoes, historico, alertas, resolveAlerta, updateLead, moveLead, addAnotacao, deleteAnotacao, updateAnotacao, deleteLead, transferLead, currentUser } = useApp()
 
   const [novaAnotacao, setNovaAnotacao]         = useState('')
   const [editingAnotacaoId, setEditingAnotacaoId] = useState<string | null>(null)
@@ -376,8 +377,11 @@ function LeadDetailContent({ lead }: { lead: Lead }) {
   const [showFechadoModal, setShowFechadoModal]   = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [valorFechadoInput, setValorFechadoInput] = useState('')
+  const [showTransferModal, setShowTransferModal] = useState(false)
 
   const canEdit = currentUser?.tipo === 'vendedor' || currentUser?.tipo === 'admin'
+  const canTransfer = currentUser?.tipo === 'admin' ||
+    (currentUser?.tipo === 'sdr' && currentUser?.pode_transferir === true)
 
   const vendedor     = users.find((u) => u.id === lead.vendedor_id)
   const sdr          = users.find((u) => u.id === lead.sdr_id)
@@ -486,6 +490,15 @@ function LeadDetailContent({ lead }: { lead: Lead }) {
               {FUNIL_LABELS[lead.status_funil]}
             </span>
             <span className="text-base">{TEMP_EMOJI[lead.temperatura]}</span>
+            {canTransfer && (
+              <button onClick={() => setShowTransferModal(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors"
+                style={{ color: '#4F46E5', border: '1px solid #C7D2FE', background: '#EEF2FF' }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = '#E0E7FF' }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = '#EEF2FF' }}>
+                <ArrowRightLeft size={13} /> Transferir
+              </button>
+            )}
             {currentUser?.tipo === 'admin' && (
               <button onClick={() => setShowDeleteConfirm(true)}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors"
@@ -1123,6 +1136,17 @@ function LeadDetailContent({ lead }: { lead: Lead }) {
             </div>
           </div>
         </div>
+      )}
+      {showTransferModal && (
+        <TransferLeadModal
+          lead={lead}
+          vendedores={users}
+          onConfirm={async (newVendedorId) => {
+            await transferLead(lead.id, newVendedorId)
+            setShowTransferModal(false)
+          }}
+          onClose={() => setShowTransferModal(false)}
+        />
       )}
       {showFollowUpModal && <FollowUpModal lead={lead} onConfirm={(date) => { updateLead(lead.id, { proximo_contato: date || undefined }); setShowFollowUpModal(false) }} onCancel={() => setShowFollowUpModal(false)} />}
       {showTempModal && <TemperaturaReuniaoModal onConfirm={(temp) => { moveLead(lead.id, 'reuniao_realizada', { temperatura: temp }); setShowTempModal(false) }} onCancel={() => setShowTempModal(false)} />}
