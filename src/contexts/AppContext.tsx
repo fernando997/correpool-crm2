@@ -11,6 +11,25 @@ import { calcLeadScore, isLeadParado, isFollowupAtrasado } from '@/lib/utils'
 import { MOCK_USERS, MOCK_LEADS, MOCK_ANOTACOES, MOCK_HISTORICO, CREDENTIALS } from '@/lib/mockData'
 import { LEAD_ENHANCEMENTS } from '@/lib/leadEnhancements'
 
+// Busca todas as linhas de uma tabela contornando o limite de 1000 do Supabase
+async function fetchAllRows<T>(
+  client: typeof supabase,
+  table: string,
+  select = '*'
+): Promise<T[]> {
+  const PAGE = 1000
+  const result: T[] = []
+  let from = 0
+  while (true) {
+    const { data, error } = await client.from(table).select(select).range(from, from + PAGE - 1)
+    if (error || !data || data.length === 0) break
+    result.push(...(data as T[]))
+    if (data.length < PAGE) break
+    from += PAGE
+  }
+  return result
+}
+
 // Fallback: enriquece leads mock com campos de inteligência
 function enrichLeads(rawLeads: Lead[]): Lead[] {
   return rawLeads.map((l) => {
@@ -101,24 +120,33 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         return
       }
 
-      let usersData = null, usersError = null
-      let leadsData = null, anotacoesData = null, historicoData = null, alertasData = null, metasData = null
+      let usersData: Record<string, unknown>[] | null = null
+      let usersError: unknown = null
+      let leadsData: unknown[] | null = null
+      let anotacoesData: unknown[] | null = null
+      let historicoData: unknown[] | null = null
+      let alertasData: unknown[] | null = null
+      let metasData: unknown[] | null = null
 
       try {
-        const results = await Promise.all([
+        const [usersRes] = await Promise.all([
           supabase.from('users').select('id, nome, email, tipo, vendedor_vinculado, ativo, pode_transferir'),
-          supabase.from('leads').select('*'),
-          supabase.from('anotacoes').select('*'),
-          supabase.from('historico_movimentacoes').select('*'),
-          supabase.from('alertas').select('*'),
-          supabase.from('metas').select('*'),
         ])
-        ;({ data: usersData, error: usersError } = results[0])
-        ;({ data: leadsData } = results[1])
-        ;({ data: anotacoesData } = results[2])
-        ;({ data: historicoData } = results[3])
-        ;({ data: alertasData } = results[4])
-        ;({ data: metasData } = results[5])
+        usersError = usersRes.error
+        usersData = (usersRes.data as Record<string, unknown>[]) ?? null
+
+        const [leads, anotacoes, historico, alertas, metas] = await Promise.all([
+          fetchAllRows(supabase, 'leads'),
+          fetchAllRows(supabase, 'anotacoes'),
+          fetchAllRows(supabase, 'historico_movimentacoes'),
+          fetchAllRows(supabase, 'alertas'),
+          fetchAllRows(supabase, 'metas'),
+        ])
+        leadsData = leads
+        anotacoesData = anotacoes
+        historicoData = historico
+        alertasData = alertas
+        metasData = metas
       } catch (err) {
         console.error('[loadData] Supabase error — fallback to mock:', err)
         const saved = localStorage.getItem('crm_user')
@@ -706,9 +734,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       throw new Error(err.error ?? 'Import failed')
     }
     // Reload leads from server to get the inserted records
-    const { data } = await supabase.from('leads').select('*')
-    if (data) {
-      setLeads(data.map((l: Record<string, unknown>) => {
+    const data = await fetchAllRows(supabase, 'leads')
+    if (data.length > 0) {
+      setLeads((data as Record<string, unknown>[]).map((l: Record<string, unknown>) => {
         const lead = l as unknown as Lead
         lead.score_lead = calcLeadScore(lead)
         return lead
