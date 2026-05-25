@@ -6,7 +6,7 @@ import { useApp } from '@/contexts/AppContext'
 import { cn } from '@/lib/utils'
 import {
   Plus, Shield, Briefcase, Headphones, X, Check, Mail, User,
-  Code2, Copy, Lock, Pencil, UserX, UserCheck, BarChart2,
+  Code2, Copy, Lock, Pencil, UserX, UserCheck, BarChart2, ArrowRightLeft,
 } from 'lucide-react'
 import type { UserRole, User as UserType } from '@/types'
 
@@ -153,6 +153,7 @@ interface UserFormState {
   senha: string
   tipo: UserRole
   vendedoresVinculados: string[] // multi-select IDs
+  podeTransferir: boolean
 }
 
 function UserFormFields({
@@ -290,12 +291,40 @@ function UserFormFields({
           )}
         </div>
       )}
+
+      {form.tipo === 'sdr' && (
+        <div>
+          <label className="label block mb-2">Permissoes SDR</label>
+          <button
+            type="button"
+            onClick={() => setForm({ ...form, podeTransferir: !form.podeTransferir })}
+            className={cn(
+              'w-full flex items-center gap-3 px-3 py-2.5 rounded-lg border transition-all text-left',
+              form.podeTransferir
+                ? 'bg-indigo-600/10 border-indigo-600/30 text-indigo-400'
+                : 'bg-[#F5F7FA] border-[#E0E6ED] text-[#6B7C93] hover:border-[#D1D9E6]'
+            )}
+          >
+            <div className={cn(
+              'w-4 h-4 rounded border flex items-center justify-center flex-shrink-0',
+              form.podeTransferir ? 'bg-indigo-500 border-indigo-500' : 'border-slate-600'
+            )}>
+              {form.podeTransferir && <Check size={10} className="text-white" />}
+            </div>
+            <ArrowRightLeft size={14} className={form.podeTransferir ? 'text-indigo-400' : 'text-[#6B7C93]'} />
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-medium">Pode transferir leads entre vendedores</p>
+              <p className="text-[10px] text-[#A0AEC0]">Exibe o botão de transferência no kanban</p>
+            </div>
+          </button>
+        </div>
+      )}
     </>
   )
 }
 
 const EMPTY_FORM: UserFormState = {
-  nome: '', email: '', senha: '', tipo: 'vendedor', vendedoresVinculados: [],
+  nome: '', email: '', senha: '', tipo: 'vendedor', vendedoresVinculados: [], podeTransferir: false,
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -330,6 +359,7 @@ export default function UsuariosPage() {
       senha: '',
       tipo: user.tipo,
       vendedoresVinculados: ids,
+      podeTransferir: user.pode_transferir === true,
     })
     setEditUser(user)
   }
@@ -344,6 +374,7 @@ export default function UsuariosPage() {
         vendedorVinculado: form.tipo === 'sdr' && form.vendedoresVinculados.length > 0
           ? form.vendedoresVinculados.join(',')
           : undefined,
+        pode_transferir: form.tipo === 'sdr' ? form.podeTransferir : undefined,
       },
       form.senha,
     )
@@ -363,6 +394,7 @@ export default function UsuariosPage() {
         vendedorVinculado: editForm.tipo === 'sdr' && editForm.vendedoresVinculados.length > 0
           ? editForm.vendedoresVinculados.join(',')
           : undefined,
+        pode_transferir: editForm.tipo === 'sdr' ? editForm.podeTransferir : undefined,
       },
       editForm.senha || undefined,
     )
@@ -464,7 +496,7 @@ export default function UsuariosPage() {
                   </div>
                 </div>
 
-                {vinculados.length > 0 && (
+                {(vinculados.length > 0 || user.pode_transferir) && (
                   <div className="mt-3 pt-3 border-t border-[#E0E6ED] space-y-1">
                     {vinculados.map((v) => (
                       <div key={v.id} className="flex items-center gap-2 text-xs text-[#6B7C93]">
@@ -472,6 +504,12 @@ export default function UsuariosPage() {
                         <span>Vinculado a <span className="text-emerald-400 font-medium">{v.nome}</span></span>
                       </div>
                     ))}
+                    {user.pode_transferir && (
+                      <div className="flex items-center gap-2 text-xs text-indigo-400">
+                        <ArrowRightLeft size={11} className="flex-shrink-0" />
+                        <span>Pode transferir leads</span>
+                      </div>
+                    )}
                   </div>
                 )}
 
