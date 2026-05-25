@@ -644,6 +644,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (updates.tipo !== undefined) dbUpdates.tipo = updates.tipo
     if ('vendedorVinculado' in updates) dbUpdates.vendedor_vinculado = updates.vendedorVinculado ?? null
     if (updates.ativo !== undefined) dbUpdates.ativo = updates.ativo
+    if ('pode_transferir' in updates) dbUpdates.pode_transferir = updates.pode_transferir ?? false
     if (senha) dbUpdates.senha = senha
     setUsers((prev) => prev.map((u) => u.id === id ? { ...u, ...updates } : u))
     supabase.from('users').update(dbUpdates).eq('id', id).then(({ error }) => {
