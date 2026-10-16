@@ -6,7 +6,7 @@ import AppShell from '@/components/layout/AppShell'
 import { useApp } from '@/contexts/AppContext'
 import {
   Code2, Send, Copy, Check, ChevronDown, ChevronRight,
-  Lock, Database, Plus, List, Pencil, Trash2, FileText, History,
+  Lock, Database, Plus, List, Pencil, Trash2, FileText, History, Sparkles,
 } from 'lucide-react'
 
 const BASE_URL   = process.env.NEXT_PUBLIC_SUPABASE_URL!
@@ -168,6 +168,13 @@ export default function ApiDocsPage() {
 
           {/* GET /historico */}
           <GetHistorico BASE_URL={BASE_URL} HEADERS={BASE_HEADERS} />
+
+          <p className="text-[10px] font-bold text-[#6B7C93] uppercase tracking-widest flex items-center gap-2 pt-2">
+            <Sparkles size={11} /> Inteligência Artificial
+          </p>
+
+          {/* GET /api/ai/analise */}
+          <GetAnaliseIA vendedores={vendedores} />
         </div>
 
         {/* cURL quick reference */}
@@ -524,6 +531,93 @@ function GetHistorico({ BASE_URL, HEADERS }: { BASE_URL: string; HEADERS: Record
       <p className="text-xs text-text-muted mb-4">Retorna o histórico de movimentações do funil. Filtre por lead_id para ver o trajeto de um lead específico.</p>
       <div className="mb-3 w-56"><label className="label block mb-1">lead_id</label><input className="input font-mono" value={leadId} onChange={e => setLeadId(e.target.value)} placeholder="l1 (opcional)" /></div>
       <button onClick={run} disabled={loading} className="btn-primary flex items-center gap-2 text-sm px-4 py-2">
+        {loading ? <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Send size={13} />}
+        {loading ? 'Buscando…' : 'Executar'}
+      </button>
+      <ResponseBox res={res} />
+    </Endpoint>
+  )
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// GET /api/ai/analise
+// ════════════════════════════════════════════════════════════════════════════
+function GetAnaliseIA({ vendedores }: { vendedores: { id: string; nome: string }[] }) {
+  const [aiKey, setAiKey] = useState('')
+  const [inicio, setInicio] = useState('')
+  const [fim, setFim] = useState('')
+  const [vendedor, setVendedor] = useState('')
+  const [incluir, setIncluir] = useState<string[]>([])
+  const [contato, setContato] = useState(false)
+  const [res, setRes] = useState<{ status: number; body: unknown } | null>(null)
+  const [loading, setLoading] = useState(false)
+
+  function params() {
+    const p = new URLSearchParams({ incluir: incluir.join(',') })
+    if (inicio)   p.set('inicio', inicio)
+    if (fim)      p.set('fim', fim)
+    if (vendedor) p.set('vendedor_id', vendedor)
+    if (contato)  p.set('incluir_contato', 'true')
+    return p
+  }
+
+  async function run() {
+    setLoading(true); setRes(null)
+    try {
+      const r = await fetch(`/api/ai/analise?${params()}`, { headers: { 'x-ai-key': aiKey } })
+      setRes({ status: r.status, body: await r.json() })
+    } catch (e) { setRes({ status: 0, body: String(e) }) }
+    setLoading(false)
+  }
+
+  const origin = typeof window !== 'undefined' ? window.location.origin : ''
+  const curl = `curl '${origin}/api/ai/analise?${params()}' \\
+  -H 'x-ai-key: <AI_API_KEY>'`
+
+  return (
+    <Endpoint method="GET" path="/api/ai/analise" summary="Dados completos para análise por IA" icon={<Sparkles size={14} className="text-blue-500/60 flex-shrink-0" />}>
+      <p className="text-xs text-text-muted mb-1">
+        Retorna o CRM inteiro pronto para uma IA analisar: dicionário de dados, resumo calculado
+        (funil, vendedores, SDRs, marketing por UTM, motivos de perda, leads parados) e, opcionalmente,
+        os dados brutos. Somente leitura — senhas e tokens nunca são retornados.
+      </p>
+      <p className="text-[11px] text-text-dim mb-4">
+        Autenticação: header <code className="text-blue-300">x-ai-key</code> com o valor da variável de ambiente <code className="text-blue-300">AI_API_KEY</code> (configurada no servidor).
+      </p>
+
+      <div className="grid grid-cols-2 gap-2 mb-3">
+        <div className="col-span-2"><label className="label block mb-1">x-ai-key *</label><input className="input font-mono" type="password" value={aiKey} onChange={e => setAiKey(e.target.value)} placeholder="valor de AI_API_KEY" /></div>
+        <div><label className="label block mb-1">inicio (data_criacao ≥)</label><input className="input" type="date" value={inicio} onChange={e => setInicio(e.target.value)} /></div>
+        <div><label className="label block mb-1">fim (data_criacao ≤)</label><input className="input" type="date" value={fim} onChange={e => setFim(e.target.value)} /></div>
+        <div className="col-span-2"><label className="label block mb-1">vendedor_id</label>
+          <select className="input" value={vendedor} onChange={e => setVendedor(e.target.value)}>
+            <option value="">— todos —</option>
+            {vendedores.map(v => <option key={v.id} value={v.id}>{v.id} — {v.nome}</option>)}
+          </select>
+        </div>
+      </div>
+
+      <p className="text-[10px] font-bold text-[#6B7C93] uppercase tracking-wider mb-2">Dados brutos (incluir) — o resumo vem sempre</p>
+      <div className="flex flex-wrap gap-4 mb-3 text-xs text-text-primary">
+        {['leads', 'anotacoes', 'historico', 'metas'].map(k => (
+          <label key={k} className="flex items-center gap-1.5 cursor-pointer">
+            <input type="checkbox" checked={incluir.includes(k)}
+              onChange={e => setIncluir(e.target.checked ? [...incluir, k] : incluir.filter(i => i !== k))} />
+            {k}
+          </label>
+        ))}
+        <label className="flex items-center gap-1.5 cursor-pointer">
+          <input type="checkbox" checked={contato} onChange={e => setContato(e.target.checked)} />
+          incluir_contato <span className="text-text-dim">(telefone/email — LGPD)</span>
+        </label>
+      </div>
+
+      <div className="relative rounded-lg overflow-hidden mb-3" style={{ background: '#F5F7FA', border: '1px solid #E0E6ED' }}>
+        <div className="absolute top-2 right-2"><CopyBtn text={curl} /></div>
+        <pre className="p-3 pr-10 text-[11px] font-mono text-[#374151] overflow-x-auto whitespace-pre-wrap leading-relaxed">{curl}</pre>
+      </div>
+
+      <button onClick={run} disabled={loading || !aiKey} className="btn-primary flex items-center gap-2 text-sm px-4 py-2 disabled:opacity-40">
         {loading ? <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Send size={13} />}
         {loading ? 'Buscando…' : 'Executar'}
       </button>
