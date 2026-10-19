@@ -549,6 +549,8 @@ function GetAnaliseIA({ vendedores }: { vendedores: { id: string; nome: string }
   const [vendedor, setVendedor] = useState('')
   const [incluir, setIncluir] = useState<string[]>([])
   const [contato, setContato] = useState(false)
+  const [minLeads, setMinLeads] = useState('')
+  const [top, setTop] = useState('')
   const [res, setRes] = useState<{ status: number; body: unknown } | null>(null)
   const [loading, setLoading] = useState(false)
 
@@ -558,6 +560,8 @@ function GetAnaliseIA({ vendedores }: { vendedores: { id: string; nome: string }
     if (fim)      p.set('fim', fim)
     if (vendedor) p.set('vendedor_id', vendedor)
     if (contato)  p.set('incluir_contato', 'true')
+    if (minLeads) p.set('min_leads', minLeads)
+    if (top)      p.set('top', top)
     return p
   }
 
@@ -578,7 +582,8 @@ function GetAnaliseIA({ vendedores }: { vendedores: { id: string; nome: string }
     <Endpoint method="GET" path="/api/ai/analise" summary="Dados completos para análise por IA" icon={<Sparkles size={14} className="text-blue-500/60 flex-shrink-0" />}>
       <p className="text-xs text-text-muted mb-1">
         Retorna o CRM inteiro pronto para uma IA analisar: dicionário de dados, resumo calculado
-        (funil, vendedores, SDRs, marketing por UTM, motivos de perda, leads parados) e, opcionalmente,
+        (funil, vendedores, SDRs, marketing por UTM, rankings de melhores/piores criativos, campanhas e vendedores,
+        motivos de perda, leads parados) e, opcionalmente,
         os dados brutos. Somente leitura — senhas e tokens nunca são retornados.
       </p>
       <p className="text-[11px] text-text-dim mb-4">
@@ -595,6 +600,8 @@ function GetAnaliseIA({ vendedores }: { vendedores: { id: string; nome: string }
             {vendedores.map(v => <option key={v.id} value={v.id}>{v.id} — {v.nome}</option>)}
           </select>
         </div>
+        <div><label className="label block mb-1">min_leads (rankings, padrão 5)</label><input className="input" type="number" min={1} value={minLeads} onChange={e => setMinLeads(e.target.value)} /></div>
+        <div><label className="label block mb-1">top (itens por ranking, padrão 5)</label><input className="input" type="number" min={1} value={top} onChange={e => setTop(e.target.value)} /></div>
       </div>
 
       <p className="text-[10px] font-bold text-[#6B7C93] uppercase tracking-wider mb-2">Dados brutos (incluir) — o resumo vem sempre</p>

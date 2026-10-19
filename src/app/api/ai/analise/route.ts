@@ -60,7 +60,8 @@ function metricasGrupo(rows: Row[]) {
   const receita = vendas.reduce((s, r) => s + num(r.valor_fechado ?? r.valor_contrato), 0)
   const agendados = rows.filter((r) => r.reuniao_agendada || ATINGIU('agendado')(r)).length
   const reunioes = rows.filter(ATINGIU('reuniao_realizada')).length
-  const declinados = rows.filter((r) => r.status_funil === 'declinado').length
+  const declinadosRows = rows.filter((r) => r.status_funil === 'declinado')
+  const declinados = declinadosRows.length
   const tempos = rows.map((r) => r.tempo_resposta_segundos).filter((t): t is number => typeof t === 'number')
   return {
     total_leads: total,
@@ -80,6 +81,7 @@ function metricasGrupo(rows: Row[]) {
     tempo_medio_resposta_min: tempos.length
       ? Math.round(tempos.reduce((a, b) => a + b, 0) / tempos.length / 60)
       : null,
+    motivos_perda: countBy(declinadosRows, 'motivo_perda'),
   }
 }
 
@@ -93,6 +95,50 @@ function agrupar(rows: Row[], key: string) {
     .map(([k, g]) => ({ [key]: k, ...metricasGrupo(g) }) as Row & ReturnType<typeof metricasGrupo>)
     .sort((a, b) => b.total_leads - a.total_leads)
 }
+
+type Grupo = ReturnType<typeof agrupar>[number]
+
+// Top/bottom N de um agrupamento. Ignora "nao_informado" e grupos com poucos leads
+// (evita 1 lead = 100% de conversão distorcer o ranking).
+function ranking(grupos: Grupo[], key: string, minLeads: number, top: number) {
+  const validos = grupos.filter((g) => g[key] !== 'nao_informado' && g.total_leads >= minLeads)
+  const resumir = (g: Grupo) => {
+    const motivo = Object.entries(g.motivos_perda).sort(([, a], [, b]) => b - a)[0]
+    return {
+      [key]: g[key],
+      ...('vendedor_nome' in g ? { vendedor_nome: g.vendedor_nome } : {}),
+      ...('sdr_nome' in g ? { sdr_nome: g.sdr_nome } : {}),
+      total_leads: g.total_leads,
+      vendas: g.vendas,
+      declinados: g.declinados,
+      receita_total: g.receita_total,
+      taxa_agendamento_pct: g.taxa_agendamento_pct,
+      taxa_conversao_pct: g.taxa_conversao_pct,
+      taxa_declinio_pct: g.taxa_declinio_pct,
+      principal_motivo_perda: motivo ? MOTIVO_PERDA_LABELS[motivo[0] as keyof typeof MOTIVO_PERDA_LABELS] ?? motivo[0] : null,
+    }
+  }
+  const ordenar = (f: (a: Grupo, b: Grupo) => number) => [...validos].sort(f).slice(0, top).map(resumir)
+  return {
+    grupos_avaliados: validos.length,
+    melhores_conversao: ordenar((a, b) => b.taxa_conversao_pct - a.taxa_conversao_pct || b.receita_total - a.receita_total),
+    piores_conversao: ordenar((a, b) => a.taxa_conversao_pct - b.taxa_conversao_pct || b.taxa_declinio_pct - a.taxa_declinio_pct),
+    maior_receita: ordenar((a, b) => b.receita_total - a.receita_total),
+    mais_declinados: ordenar((a, b) => b.taxa_declinio_pct - a.taxa_declinio_pct || b.declinados - a.declinados),
+    melhor_agendamento: ordenar((a, b) => b.taxa_agendamento_pct - a.taxa_agendamento_pct),
+    pior_agendamento: ordenar((a, b) => a.taxa_agendamento_pct - b.taxa_agendamento_pct),
+  }
+}
+
+const UTM_CAMPOS = {
+  utm_source: 'Origem do tráfego (ex.: facebook, google, instagram)',
+  utm_medium: 'Meio/tipo de mídia (ex.: cpc, organico)',
+  utm_campaign: 'Campanha de anúncio',
+  utm_content: 'Criativo (peça/vídeo/imagem do anúncio)',
+  utm_term: 'Termo/palavra-chave ou público',
+  utm_anuncio: 'Identificador do anúncio',
+  utm_posicionamento: 'Posicionamento do anúncio (ex.: feed, stories, reels)',
+} as const
 
 export async function GET(req: NextRequest) {
   // ── Auth ─────────────────────────────────────────────────────
@@ -111,6 +157,8 @@ export async function GET(req: NextRequest) {
   const vendedorId = sp.get('vendedor_id')
   const incluir = new Set((sp.get('incluir') ?? 'leads,anotacoes,historico,metas').split(','))
   const incluirContato = sp.get('incluir_contato') === 'true'
+  const minLeads = Math.max(1, parseInt(sp.get('min_leads') ?? '5', 10) || 5)  // mínimo de leads p/ entrar nos rankings
+  const top = Math.max(1, parseInt(sp.get('top') ?? '5', 10) || 5)             // itens por ranking
 
   let users: Row[], leads: Row[], anotacoes: Row[], historico: Row[], metas: Row[], alertas: Row[]
   try {
@@ -169,20 +217,37 @@ export async function GET(req: NextRequest) {
     .filter((l) => l.dias_sem_interacao >= 3)
     .sort((a, b) => b.dias_sem_interacao - a.dias_sem_interacao)
 
+  const porSdr = agrupar(leads.filter((l) => l.sdr_id), 'sdr_id').map((s) => ({
+    ...s, sdr_nome: nomeUsuario[s.sdr_id as string] ?? null,
+  }))
+  const marketing = {
+    por_source: agrupar(leads, 'utm_source'),
+    por_medium: agrupar(leads, 'utm_medium'),
+    por_campanha: agrupar(leads, 'utm_campaign'),
+    por_criativo: agrupar(leads, 'utm_content'),
+    por_termo: agrupar(leads, 'utm_term'),
+    por_anuncio: agrupar(leads, 'utm_anuncio'),
+    por_posicionamento: agrupar(leads, 'utm_posicionamento'),
+  }
+
   const resumo = {
     geral: metricasGrupo(leads),
     funil,
     por_vendedor: porVendedor,
-    por_sdr: agrupar(leads.filter((l) => l.sdr_id), 'sdr_id').map((s) => ({
-      ...s, sdr_nome: nomeUsuario[s.sdr_id as string] ?? null,
-    })),
+    por_sdr: porSdr,
     por_temperatura: countBy(leads, 'temperatura'),
     motivos_perda: countBy(leads.filter((l) => l.status_funil === 'declinado'), 'motivo_perda'),
-    marketing: {
-      por_source: agrupar(leads, 'utm_source'),
-      por_campanha: agrupar(leads, 'utm_campaign'),
-      por_criativo: agrupar(leads, 'utm_content'),
-      por_posicionamento: agrupar(leads, 'utm_posicionamento'),
+    marketing,
+    rankings: {
+      criterio: `Só entram grupos com pelo menos ${minLeads} leads (param min_leads) e com valor informado; top ${top} por lista (param top).`,
+      criativos: ranking(marketing.por_criativo, 'utm_content', minLeads, top),
+      campanhas: ranking(marketing.por_campanha, 'utm_campaign', minLeads, top),
+      sources: ranking(marketing.por_source, 'utm_source', minLeads, top),
+      anuncios: ranking(marketing.por_anuncio, 'utm_anuncio', minLeads, top),
+      posicionamentos: ranking(marketing.por_posicionamento, 'utm_posicionamento', minLeads, top),
+      termos: ranking(marketing.por_termo, 'utm_term', minLeads, top),
+      vendedores: ranking(porVendedor, 'vendedor_id', minLeads, top),
+      sdrs: ranking(porSdr, 'sdr_id', minLeads, top),
     },
     leads_por_dia: porDia,
     leads_parados_3d_ou_mais: parados,
@@ -203,13 +268,36 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({
     success: true,
     gerado_em: new Date().toISOString(),
-    filtros: { inicio, fim, vendedor_id: vendedorId, incluir: Array.from(incluir), incluir_contato: incluirContato },
+    filtros: { inicio, fim, vendedor_id: vendedorId, incluir: Array.from(incluir), incluir_contato: incluirContato, min_leads: minLeads, top },
     dicionario: {
       descricao: 'CRM de vendas. Cada lead percorre o funil (status_funil). "fechado" e "contrato_assinado" contam como venda; "declinado" é perda (ver motivo_perda). Receita = valor_fechado (ou valor_contrato). valor_estimado é a expectativa antes do fechamento.',
+      como_analisar: 'Use resumo.rankings para saber melhores/piores criativos, campanhas, sources, anúncios, posicionamentos, vendedores e SDRs (conversão, receita, declínio, agendamento e principal motivo de perda). resumo.marketing traz as métricas completas de cada valor de UTM. Valores "nao_informado" = campo vazio no lead.',
       etapas_funil: FUNIL_LABELS,
       temperaturas: TEMPERATURA_LABELS,
       motivos_perda: MOTIVO_PERDA_LABELS,
       papeis_usuario: { admin: 'Administrador', vendedor: 'Closer/vendedor', sdr: 'Pré-vendas', marketing: 'Marketing' },
+      vendedores: Object.fromEntries(users.filter((u) => u.tipo === 'vendedor').map((u) => [u.id, u.nome])),
+      sdrs: Object.fromEntries(users.filter((u) => u.tipo === 'sdr').map((u) => [u.id, u.nome])),
+      utm_campos: UTM_CAMPOS,
+      // Valores distintos de cada UTM no período, com a quantidade de leads
+      utm_valores: Object.fromEntries(
+        Object.keys(UTM_CAMPOS).map((campo) => [campo, countBy(leads, campo)])
+      ),
+      metricas: {
+        total_leads: 'Leads no grupo',
+        agendados: 'Leads com reunião agendada (ou que passaram dessa etapa)',
+        reunioes_realizadas: 'Leads que chegaram a reunião realizada',
+        vendas: 'Leads em fechado/contrato_assinado',
+        declinados: 'Leads perdidos (status declinado)',
+        taxa_agendamento_pct: 'agendados / total_leads',
+        taxa_comparecimento_pct: 'reunioes_realizadas / agendados',
+        taxa_conversao_pct: 'vendas / total_leads',
+        taxa_declinio_pct: 'declinados / total_leads',
+        ticket_medio: 'receita_total / vendas',
+        pipeline_estimado: 'Soma de valor_estimado dos leads ainda abertos',
+        tempo_medio_resposta_min: 'Tempo médio até a primeira resposta, em minutos',
+        motivos_perda: 'Contagem de motivo_perda entre os declinados do grupo',
+      },
     },
     resumo,
     usuarios: users,
