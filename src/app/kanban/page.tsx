@@ -1,13 +1,13 @@
 'use client'
 
-import { useState } from 'react'
+import { memo, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import AppShell from '@/components/layout/AppShell'
 import { useApp } from '@/contexts/AppContext'
 import { FUNIL_LABELS, FUNIL_ORDER, TEMPERATURA_COLORS, TEMPERATURA_LABELS, type StatusFunil, type Lead, type Temperatura } from '@/types'
 import { cn, formatCurrency, formatDuration, scoreBg } from '@/lib/utils'
 import {
   Phone, Calendar, ChevronDown, Plus, Search, X, Tag, GripVertical,
-  Clock, AlertTriangle, DollarSign, CheckCircle, Thermometer, Download, CalendarClock, ArrowRightLeft,
+  Clock, AlertTriangle, DollarSign, CheckCircle, Thermometer, Download, CalendarClock, ArrowRightLeft, ArrowUpDown,
 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import AddLeadModal from '@/components/leads/AddLeadModal'
@@ -252,35 +252,42 @@ function ScoreBadge({ score }: { score: number }) {
   )
 }
 
-function LeadCard({
-  lead, users, alertaIds, showVendorTag, canTransfer, onClick, onMoveLeft, onMoveRight, onScheduleClick, onTransferClick,
+const FOLLOWUP_STAGES: StatusFunil[] = ['primeiro_contato', 'followup1', 'followup2', 'followup3']
+
+// Quantos cards cada coluna desenha por vez (o resto entra ao rolar)
+const COL_PAGE = 30
+
+type SortOrder = 'recentes' | 'antigos'
+const SORT_KEY = 'kanban_sort'
+
+// data_criacao = data original (leads importados); created_at desempata pelo horário
+function leadSortKey(l: Lead) {
+  return `${l.data_criacao ?? ''}|${l.created_at ?? ''}`
+}
+
+type CardAction = 'open' | 'left' | 'right' | 'schedule' | 'transfer'
+
+// memo: com milhares de leads, só redesenha o card que mudou
+const LeadCard = memo(function LeadCard({
+  lead, vendedorNome, vendorColor, hasAlerta, showVendorTag, canTransfer, canMoveLeft, canMoveRight, onAction,
 }: {
   lead: Lead
-  users: ReturnType<typeof useApp>['users']
-  alertaIds: Set<string>
+  vendedorNome?: string
+  vendorColor: string
+  hasAlerta: boolean
   showVendorTag: boolean
   canTransfer: boolean
-  onClick: () => void
-  onMoveLeft?: () => void
-  onMoveRight?: () => void
-  onScheduleClick?: () => void
-  onTransferClick?: () => void
+  canMoveLeft: boolean
+  canMoveRight: boolean
+  onAction: (action: CardAction, lead: Lead) => void
 }) {
-  const vendedor = users.find((u) => u.id === lead.vendedor_id)
   const tempColor = TEMPERATURA_COLORS[lead.temperatura]
-  const hasAlerta = alertaIds.has(lead.id)
   const score = lead.score_lead ?? 0
   const todayStr = new Date().toISOString().split('T')[0]
   const pc = lead.proximo_contato
   const pcIsToday = pc === todayStr
   const pcIsPast = !!(pc && pc < todayStr)
-  const FOLLOWUP_STAGES: StatusFunil[] = ['primeiro_contato', 'followup1', 'followup2', 'followup3']
   const isFollowupStage = FOLLOWUP_STAGES.includes(lead.status_funil)
-
-  // Cor estável por vendedor
-  const vendedores = users.filter((u) => u.tipo === 'vendedor')
-  const vendedorIdx = vendedores.findIndex((u) => u.id === lead.vendedor_id)
-  const vendorColor = VENDOR_PALETTE[Math.max(0, vendedorIdx) % VENDOR_PALETTE.length]
 
   return (
     <div
@@ -290,17 +297,17 @@ function LeadCard({
         pcIsToday && 'ring-2 ring-orange-400/60',
         pcIsPast && 'ring-2 ring-red-500/40',
       )}
-      onClick={onClick}
+      onClick={() => onAction('open', lead)}
       style={{ borderLeftColor: tempColor, borderLeftWidth: 3 }}
     >
       {/* Tag de vendedor — visível para SDR e admin */}
-      {showVendorTag && vendedor && (
+      {showVendorTag && vendedorNome && (
         <div className="flex items-center gap-1 mb-2">
           <span
             className="text-[9px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wide"
             style={{ background: `${vendorColor}20`, color: vendorColor, border: `1px solid ${vendorColor}40` }}
           >
-            {vendedor.nome.split(' ')[0]}
+            {vendedorNome.split(' ')[0]}
           </span>
         </div>
       )}
@@ -374,23 +381,23 @@ function LeadCard({
             className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-semibold"
             style={{ background: `${vendorColor}25`, color: vendorColor }}
           >
-            {vendedor?.nome.charAt(0)}
+            {vendedorNome?.charAt(0)}
           </div>
-          <span className="text-[10px] text-[#A0AEC0]">{vendedor?.nome.split(' ')[0]}</span>
+          <span className="text-[10px] text-[#A0AEC0]">{vendedorNome?.split(' ')[0]}</span>
         </div>
         <div className="flex items-center gap-1">
-          {canTransfer && onTransferClick && (
+          {canTransfer && (
             <button
-              onClick={(e) => { e.stopPropagation(); onTransferClick() }}
+              onClick={(e) => { e.stopPropagation(); onAction('transfer', lead) }}
               className="w-5 h-5 rounded opacity-0 group-hover:opacity-100 bg-[#D1D9E6] hover:bg-indigo-500/20 flex items-center justify-center text-[#6B7C93] hover:text-indigo-500 transition-colors"
               title="Transferir lead"
             >
               <ArrowRightLeft size={10} />
             </button>
           )}
-          {isFollowupStage && onScheduleClick && (
+          {isFollowupStage && (
             <button
-              onClick={(e) => { e.stopPropagation(); onScheduleClick() }}
+              onClick={(e) => { e.stopPropagation(); onAction('schedule', lead) }}
               className={cn(
                 'w-5 h-5 rounded flex items-center justify-center transition-colors',
                 pc
@@ -403,17 +410,17 @@ function LeadCard({
             </button>
           )}
           <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-            {onMoveLeft && (
+            {canMoveLeft && (
               <button
-                onClick={(e) => { e.stopPropagation(); onMoveLeft() }}
+                onClick={(e) => { e.stopPropagation(); onAction('left', lead) }}
                 className="w-5 h-5 rounded bg-[#D1D9E6] hover:bg-indigo-600/30 flex items-center justify-center text-[#6B7C93] hover:text-indigo-400 transition-colors"
               >
                 <ChevronDown size={11} className="rotate-90" />
               </button>
             )}
-            {onMoveRight && (
+            {canMoveRight && (
               <button
-                onClick={(e) => { e.stopPropagation(); onMoveRight() }}
+                onClick={(e) => { e.stopPropagation(); onAction('right', lead) }}
                 className="w-5 h-5 rounded bg-[#D1D9E6] hover:bg-emerald-600/30 flex items-center justify-center text-[#6B7C93] hover:text-emerald-400 transition-colors"
               >
                 <ChevronDown size={11} className="-rotate-90" />
@@ -424,7 +431,7 @@ function LeadCard({
       </div>
     </div>
   )
-}
+})
 
 const COL_COLORS: Partial<Record<StatusFunil, string>> = {
   fechado: 'text-emerald-400',
@@ -450,33 +457,70 @@ export default function KanbanPage() {
   const [filterDataDe, setFilterDataDe] = useState('')
   const [filterDataAte, setFilterDataAte] = useState('')
   const [transferingLead, setTransferingLead] = useState<Lead | null>(null)
+  const [sortOrder, setSortOrder] = useState<SortOrder>('recentes')
+  const [colLimit, setColLimit] = useState<Partial<Record<StatusFunil, number>>>({})
+  const deferredSearch = useDeferredValue(search)
+
+  // Ordem escolhida fica salva neste navegador
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(SORT_KEY)
+      if (saved === 'recentes' || saved === 'antigos') setSortOrder(saved)
+    } catch {}
+  }, [])
+  function changeSort(order: SortOrder) {
+    setSortOrder(order)
+    try { localStorage.setItem(SORT_KEY, order) } catch {}
+  }
 
   // IDs de leads com alertas ativos
-  const alertaLeadIds = new Set(
-    alertas.filter((a) => !a.resolvido).map((a) => a.lead_id)
+  const alertaLeadIds = useMemo(
+    () => new Set(alertas.filter((a) => !a.resolvido).map((a) => a.lead_id)),
+    [alertas]
   )
 
-  const sdrVendedores = currentUser?.tipo === 'sdr' && currentUser.vendedorVinculado
-    ? currentUser.vendedorVinculado.split(',').map((s) => s.trim()).filter(Boolean)
-    : []
+  const visibleLeads = useMemo(() => {
+    const sdrVendedores = currentUser?.tipo === 'sdr' && currentUser.vendedorVinculado
+      ? currentUser.vendedorVinculado.split(',').map((s) => s.trim()).filter(Boolean)
+      : []
+    return leads.filter((l) => {
+      if (currentUser?.tipo === 'vendedor') return l.vendedor_id === currentUser.id
+      if (currentUser?.tipo === 'sdr') return l.sdr_id === currentUser.id || sdrVendedores.includes(l.vendedor_id)
+      return true
+    })
+  }, [leads, currentUser])
 
-  const visibleLeads = leads.filter((l) => {
-    if (currentUser?.tipo === 'vendedor') return l.vendedor_id === currentUser.id
-    if (currentUser?.tipo === 'sdr') return l.sdr_id === currentUser.id || sdrVendedores.includes(l.vendedor_id)
-    return true
-  })
+  const filteredLeads = useMemo(() => {
+    const q = deferredSearch.toLowerCase()
+    const list = visibleLeads.filter((l) => {
+      const matchSearch = !q ||
+        l.nome.toLowerCase().includes(q) ||
+        l.telefone.includes(deferredSearch)
+      const matchVendedor = !filterVendedor || l.vendedor_id === filterVendedor
+      const matchUTM = !filterUTM || l.utm_content === filterUTM
+      const leadDate = l.data_criacao ?? l.created_at?.split('T')[0] ?? ''
+      const matchDataDe = !filterDataDe || leadDate >= filterDataDe
+      const matchDataAte = !filterDataAte || leadDate <= filterDataAte
+      return matchSearch && matchVendedor && matchUTM && matchDataDe && matchDataAte
+    })
+    const dir = sortOrder === 'recentes' ? -1 : 1
+    const keys = new Map(list.map((l) => [l.id, leadSortKey(l)]))
+    return list.sort((a, b) => dir * keys.get(a.id)!.localeCompare(keys.get(b.id)!))
+  }, [visibleLeads, deferredSearch, filterVendedor, filterUTM, filterDataDe, filterDataAte, sortOrder])
 
-  const filteredLeads = visibleLeads.filter((l) => {
-    const matchSearch = !search ||
-      l.nome.toLowerCase().includes(search.toLowerCase()) ||
-      l.telefone.includes(search)
-    const matchVendedor = !filterVendedor || l.vendedor_id === filterVendedor
-    const matchUTM = !filterUTM || l.utm_content === filterUTM
-    const leadDate = l.data_criacao ?? l.created_at?.split('T')[0] ?? ''
-    const matchDataDe = !filterDataDe || leadDate >= filterDataDe
-    const matchDataAte = !filterDataAte || leadDate <= filterDataAte
-    return matchSearch && matchVendedor && matchUTM && matchDataDe && matchDataAte
-  })
+  // Leads por coluna + valor do pipeline, calculados uma vez
+  const byStatus = useMemo(() => {
+    const map = new Map<StatusFunil, Lead[]>(FUNIL_ORDER.map((s) => [s, []]))
+    for (const l of filteredLeads) map.get(l.status_funil)?.push(l)
+    return map
+  }, [filteredLeads])
+
+  // Filtro ou ordem mudou: volta a mostrar só o começo de cada coluna
+  useEffect(() => { setColLimit({}) }, [deferredSearch, filterVendedor, filterUTM, filterDataDe, filterDataAte, sortOrder])
+
+  const showMore = useCallback((status: StatusFunil) => {
+    setColLimit((prev) => ({ ...prev, [status]: (prev[status] ?? COL_PAGE) + COL_PAGE }))
+  }, [])
 
   const isVendedor = currentUser?.tipo === 'vendedor'
   const isSdr      = currentUser?.tipo === 'sdr'
@@ -550,14 +594,26 @@ export default function KanbanPage() {
   const showVendorTag = isSdr || isAdmin
 
   // SDR vê apenas vendedores cujos leads ele tem acesso
-  const vendedores = users.filter((u) => u.tipo === 'vendedor')
-  const vendedoresFiltro = isSdr
-    ? vendedores.filter((v) => visibleLeads.some((l) => l.vendedor_id === v.id))
-    : isAdmin
-    ? vendedores
-    : []  // vendedor não usa esse filtro
+  const vendedores = useMemo(() => users.filter((u) => u.tipo === 'vendedor'), [users])
+  const vendedoresFiltro = useMemo(() => {
+    if (isSdr) {
+      const ids = new Set(visibleLeads.map((l) => l.vendedor_id))
+      return vendedores.filter((v) => ids.has(v.id))
+    }
+    return isAdmin ? vendedores : []  // vendedor não usa esse filtro
+  }, [isSdr, isAdmin, vendedores, visibleLeads])
 
-  const utmContents = [...new Set(visibleLeads.map((l) => l.utm_content).filter(Boolean))]
+  // Nome e cor estável por vendedor (antes cada card procurava na lista de usuários)
+  const userNome = useMemo(() => new Map(users.map((u) => [u.id, u.nome])), [users])
+  const vendorColors = useMemo(
+    () => new Map(vendedores.map((v, i) => [v.id, VENDOR_PALETTE[i % VENDOR_PALETTE.length]])),
+    [vendedores]
+  )
+
+  const utmContents = useMemo(
+    () => [...new Set(visibleLeads.map((l) => l.utm_content).filter(Boolean))],
+    [visibleLeads]
+  )
 
   function handleDragStart(e: React.DragEvent, leadId: string) {
     setDragLeadId(leadId)
@@ -609,9 +665,27 @@ export default function KanbanPage() {
 
   // Valor total estimado no pipeline por coluna
   function colPipeline(status: StatusFunil) {
-    return filteredLeads
-      .filter((l) => l.status_funil === status)
-      .reduce((s, l) => s + (l.valor_contrato ?? 0), 0)
+    return (byStatus.get(status) ?? []).reduce((s, l) => s + (l.valor_contrato ?? 0), 0)
+  }
+
+  // Ações dos cards: uma função estável (o memo do card não quebra a cada render)
+  // que chama sempre a versão mais nova dos handlers
+  const actionsRef = useRef<Record<CardAction, (lead: Lead) => void>>(null!)
+  actionsRef.current = {
+    open: (lead) => router.push(`/leads/${lead.id}`),
+    left: handleMoveLeft,
+    right: handleMoveRight,
+    schedule: setSchedulingLead,
+    transfer: setTransferingLead,
+  }
+  const onCardAction = useCallback((action: CardAction, lead: Lead) => actionsRef.current[action](lead), [])
+
+  // Rolou perto do fim da coluna: desenha mais cards
+  function handleColScroll(e: React.UIEvent<HTMLDivElement>, status: StatusFunil, total: number) {
+    const el = e.currentTarget
+    if ((colLimit[status] ?? COL_PAGE) < total && el.scrollTop + el.clientHeight > el.scrollHeight - 300) {
+      showMore(status)
+    }
   }
 
   return (
@@ -690,6 +764,19 @@ export default function KanbanPage() {
               />
             </div>
 
+            <div className="flex items-center gap-1.5">
+              <ArrowUpDown size={13} className="text-[#6B7C93] flex-shrink-0" />
+              <select
+                className="input !w-44 text-xs"
+                title="Ordem dos cards em cada coluna"
+                value={sortOrder}
+                onChange={(e) => changeSort(e.target.value as SortOrder)}
+              >
+                <option value="recentes">Mais recentes primeiro</option>
+                <option value="antigos">Mais antigos primeiro</option>
+              </select>
+            </div>
+
             {(filterVendedor || filterUTM || filterDataDe || filterDataAte) && (
               <button className="text-xs text-[#6B7C93] hover:text-[#1F2D3D] flex items-center gap-1"
                 onClick={() => { setFilterVendedor(''); setFilterUTM(''); setFilterDataDe(''); setFilterDataAte('') }}>
@@ -715,7 +802,9 @@ export default function KanbanPage() {
         <div className="flex-1 overflow-x-auto overflow-y-hidden">
           <div className="flex gap-3 h-full px-4 py-4" style={{ minWidth: 'max-content' }}>
             {FUNIL_ORDER.map((status, colIdx) => {
-              const colLeads = filteredLeads.filter((l) => l.status_funil === status)
+              const colLeads = byStatus.get(status) ?? []
+              const limit = colLimit[status] ?? COL_PAGE
+              const shownLeads = colLeads.length > limit ? colLeads.slice(0, limit) : colLeads
               const label = FUNIL_LABELS[status]
               const isDragOver = dragOverCol === status
               const colorClass = COL_COLORS[status] || 'text-[#6B7C93]'
@@ -767,11 +856,14 @@ export default function KanbanPage() {
                   </div>
 
                   {/* Cards */}
-                  <div className={cn(
-                    'flex-1 overflow-y-auto kanban-col rounded-b-lg border p-2 space-y-2 transition-colors min-h-32',
-                    isDragOver ? 'bg-indigo-600/10 border-indigo-500/50 border-dashed' : 'bg-[#EEF1F5] border-[#E0E6ED]'
-                  )}>
-                    {colLeads.map((lead) => (
+                  <div
+                    className={cn(
+                      'flex-1 overflow-y-auto kanban-col rounded-b-lg border p-2 space-y-2 transition-colors min-h-32',
+                      isDragOver ? 'bg-indigo-600/10 border-indigo-500/50 border-dashed' : 'bg-[#EEF1F5] border-[#E0E6ED]'
+                    )}
+                    onScroll={(e) => handleColScroll(e, status, colLeads.length)}
+                  >
+                    {shownLeads.map((lead) => (
                       <div
                         key={lead.id}
                         draggable={lead.status_funil !== 'fechado'}
@@ -781,18 +873,25 @@ export default function KanbanPage() {
                       >
                         <LeadCard
                           lead={lead}
-                          users={users}
-                          alertaIds={alertaLeadIds}
+                          vendedorNome={userNome.get(lead.vendedor_id)}
+                          vendorColor={vendorColors.get(lead.vendedor_id) ?? VENDOR_PALETTE[0]}
+                          hasAlerta={alertaLeadIds.has(lead.id)}
                           showVendorTag={showVendorTag}
                           canTransfer={canTransfer}
-                          onClick={() => router.push(`/leads/${lead.id}`)}
-                          onMoveLeft={colIdx > 0 && lead.status_funil !== 'fechado' ? () => handleMoveLeft(lead) : undefined}
-                          onMoveRight={colIdx < FUNIL_ORDER.length - 2 && lead.status_funil !== 'fechado' ? () => handleMoveRight(lead) : undefined}
-                          onScheduleClick={() => setSchedulingLead(lead)}
-                          onTransferClick={canTransfer ? () => setTransferingLead(lead) : undefined}
+                          canMoveLeft={colIdx > 0 && lead.status_funil !== 'fechado'}
+                          canMoveRight={colIdx < FUNIL_ORDER.length - 2 && lead.status_funil !== 'fechado'}
+                          onAction={onCardAction}
                         />
                       </div>
                     ))}
+                    {colLeads.length > shownLeads.length && (
+                      <button
+                        onClick={() => showMore(status)}
+                        className="w-full py-2 text-[11px] font-medium text-[#6B7C93] hover:text-[#1F2D3D] hover:bg-[#E0E6ED] rounded-lg transition-colors"
+                      >
+                        Mostrar mais ({colLeads.length - shownLeads.length} restantes)
+                      </button>
+                    )}
                     {colLeads.length === 0 && !isDragOver && (
                       <div className="flex flex-col items-center justify-center py-6">
                         <p className="text-xs text-slate-700">Nenhum lead</p>

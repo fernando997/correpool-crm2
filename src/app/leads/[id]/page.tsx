@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, Suspense } from 'react'
+import { useMemo, useState, Suspense } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import AppShell from '@/components/layout/AppShell'
 import { useApp } from '@/contexts/AppContext'
@@ -385,9 +385,13 @@ function LeadDetailContent({ lead }: { lead: Lead }) {
 
   const vendedor     = users.find((u) => u.id === lead.vendedor_id)
   const sdr          = users.find((u) => u.id === lead.sdr_id)
-  const leadAnotacoes = anotacoes.filter((a) => a.lead_id === lead.id)
-  const leadHistorico = historico.filter((h) => h.lead_id === lead.id).sort((a, b) => b.data.localeCompare(a.data))
-  const leadAlertas   = alertas.filter((a) => a.lead_id === lead.id)
+  // memo: o historico tem dezenas de milhares de linhas; nao refiltrar a cada tecla
+  const leadAnotacoes = useMemo(() => anotacoes.filter((a) => a.lead_id === lead.id), [anotacoes, lead.id])
+  const leadHistorico = useMemo(
+    () => historico.filter((h) => h.lead_id === lead.id).sort((a, b) => b.data.localeCompare(a.data)),
+    [historico, lead.id]
+  )
+  const leadAlertas   = useMemo(() => alertas.filter((a) => a.lead_id === lead.id), [alertas, lead.id])
   const currentStepIdx = FUNIL_ORDER.indexOf(lead.status_funil)
 
   const handleAddAnotacao = () => {
