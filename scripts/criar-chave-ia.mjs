@@ -10,7 +10,7 @@ const PERFIS = {
   vitor: {
     nome: 'vitor',
     usuario_id: 'vitor-ia',
-    escopos: ['leads:buscar', 'leads:escrever', 'leads:atribuir', 'anotacoes:criar', 'vendedores:listar'],
+    escopos: ['leads:buscar', 'leads:escrever', 'leads:atribuir', 'anotacoes:criar', 'anotacoes:ler', 'vendedores:listar'],
     limite_por_minuto: 60,
   },
 }

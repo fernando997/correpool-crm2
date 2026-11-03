@@ -3,6 +3,7 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js'
 import {
   FUNIL_LABELS, FUNIL_ORDER, MOTIVO_PERDA_LABELS, TEMPERATURA_LABELS,
 } from '@/types'
+import { CANAIS_IA } from '@/lib/apiIa'
 
 // Endpoint somente-leitura para que uma IA consulte e analise todo o CRM.
 // Auth: header `x-ai-key` igual a AI_API_KEY (chave própria, nunca exposta no browser).
@@ -220,6 +221,8 @@ export async function GET(req: NextRequest) {
   const porSdr = agrupar(leads.filter((l) => l.sdr_id), 'sdr_id').map((s) => ({
     ...s, sdr_nome: nomeUsuario[s.sdr_id as string] ?? null,
   }))
+  // Canal de WhatsApp da IA por onde o lead entrou (vazio = formulário/outros)
+  const porOrigem = agrupar(leads, 'origem')
   const marketing = {
     por_source: agrupar(leads, 'utm_source'),
     por_medium: agrupar(leads, 'utm_medium'),
@@ -235,6 +238,7 @@ export async function GET(req: NextRequest) {
     funil,
     por_vendedor: porVendedor,
     por_sdr: porSdr,
+    por_origem: porOrigem,
     por_temperatura: countBy(leads, 'temperatura'),
     motivos_perda: countBy(leads.filter((l) => l.status_funil === 'declinado'), 'motivo_perda'),
     marketing,
@@ -248,6 +252,7 @@ export async function GET(req: NextRequest) {
       termos: ranking(marketing.por_termo, 'utm_term', minLeads, top),
       vendedores: ranking(porVendedor, 'vendedor_id', minLeads, top),
       sdrs: ranking(porSdr, 'sdr_id', minLeads, top),
+      origens: ranking(porOrigem, 'origem', minLeads, top),
     },
     leads_por_dia: porDia,
     leads_parados_3d_ou_mais: parados,
@@ -271,13 +276,17 @@ export async function GET(req: NextRequest) {
     filtros: { inicio, fim, vendedor_id: vendedorId, incluir: Array.from(incluir), incluir_contato: incluirContato, min_leads: minLeads, top },
     dicionario: {
       descricao: 'CRM de vendas. Cada lead percorre o funil (status_funil). "fechado" e "contrato_assinado" contam como venda; "declinado" é perda (ver motivo_perda). Receita = valor_fechado (ou valor_contrato). valor_estimado é a expectativa antes do fechamento.',
-      como_analisar: 'Use resumo.rankings para saber melhores/piores criativos, campanhas, sources, anúncios, posicionamentos, vendedores e SDRs (conversão, receita, declínio, agendamento e principal motivo de perda). resumo.marketing traz as métricas completas de cada valor de UTM. Valores "nao_informado" = campo vazio no lead.',
+      como_analisar: 'Use resumo.rankings para saber melhores/piores criativos, campanhas, sources, anúncios, posicionamentos, origens (canal de WhatsApp da IA), vendedores e SDRs (conversão, receita, declínio, agendamento e principal motivo de perda). resumo.marketing traz as métricas completas de cada valor de UTM e resumo.por_origem as de cada canal. Valores "nao_informado" = campo vazio no lead.',
       etapas_funil: FUNIL_LABELS,
       temperaturas: TEMPERATURA_LABELS,
       motivos_perda: MOTIVO_PERDA_LABELS,
       papeis_usuario: { admin: 'Administrador', vendedor: 'Closer/vendedor', sdr: 'Pré-vendas', marketing: 'Marketing' },
       vendedores: Object.fromEntries(users.filter((u) => u.tipo === 'vendedor').map((u) => [u.id, u.nome])),
       sdrs: Object.fromEntries(users.filter((u) => u.tipo === 'sdr').map((u) => [u.id, u.nome])),
+      origens: {
+        ...Object.fromEntries(Object.entries(CANAIS_IA).map(([o, c]) => [o, `${c.canal}, atendido pela IA ${c.nome}`])),
+        nao_informado: 'Não entrou pelo WhatsApp da IA (formulário, tráfego pago e outros)',
+      },
       utm_campos: UTM_CAMPOS,
       // Valores distintos de cada UTM no período, com a quantidade de leads
       utm_valores: Object.fromEntries(

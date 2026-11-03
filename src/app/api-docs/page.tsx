@@ -582,7 +582,7 @@ function GetAnaliseIA({ vendedores }: { vendedores: { id: string; nome: string }
     <Endpoint method="GET" path="/api/ai/analise" summary="Dados completos para análise por IA" icon={<Sparkles size={14} className="text-blue-500/60 flex-shrink-0" />}>
       <p className="text-xs text-text-muted mb-1">
         Retorna o CRM inteiro pronto para uma IA analisar: dicionário de dados, resumo calculado
-        (funil, vendedores, SDRs, marketing por UTM, rankings de melhores/piores criativos, campanhas e vendedores,
+        (funil, vendedores, SDRs, origem por canal de WhatsApp da IA, marketing por UTM, rankings de melhores/piores criativos, campanhas e vendedores,
         motivos de perda, leads parados) e, opcionalmente,
         os dados brutos. Somente leitura — senhas e tokens nunca são retornados.
       </p>

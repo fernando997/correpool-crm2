@@ -1,7 +1,8 @@
 import { NextRequest } from 'next/server'
 import {
   autenticar, comIdempotencia, erro, ok, lerJson, telCandidatos, telNorm, telValido,
-  hojeBrasilia, registrarMovimento,
+  hojeBrasilia, registrarMovimento, texto, atualizarLead,
+  CANAIS_IA, ORIGEM_PADRAO, ORIGENS_IA, USUARIOS_IA, ehOrigemIa,
 } from '@/lib/apiIa'
 
 // POST /api/ai/leads — cria ou atualiza o lead pelo telefone (upsert).
@@ -10,15 +11,13 @@ import {
 const FAIXAS = ['acima_150k', 'de_100k_a_150k', 'de_60k_a_100k', 'de_30k_a_60k', 'ate_30k', 'nao_informado'] as const
 const PERFIS = ['novo_no_mercado', 'ja_conhece', 'locacao'] as const
 const PRIORIDADES = ['alta', 'media', 'menor'] as const
-const ORIGEM = 'whatsapp_0800'
+const UTMS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_anuncio'] as const
 
 // Etapas em que a IA ainda pode mexer no lead; daqui pra frente é com o closer
 const ETAPAS_INICIAIS = ['trafego_pago', 'primeiro_contato', 'followup1', 'followup2', 'followup3', 'declinado']
 
 const prioridadeDaFaixa = (f: string) =>
   f === 'acima_150k' || f === 'de_100k_a_150k' ? 'alta' : f === 'de_60k_a_100k' ? 'media' : 'menor'
-
-const texto = (v: unknown, max: number) => (typeof v === 'string' ? v.trim().slice(0, max) : undefined)
 
 export async function GET() {
   return erro(403, 'Listagem de leads não é permitida para chaves de IA. Use /api/ai/leads/busca?telefone=')
@@ -37,8 +36,11 @@ export async function POST(req: NextRequest) {
     const telefone = texto(body.telefone, 30)
     if (!telefone || !telValido(telefone)) return erro(400, 'telefone inválido: use E.164 brasileiro, ex. +5511999999999')
 
-    const origem = texto(body.origem, 50) ?? ORIGEM
-    if (origem !== ORIGEM) return erro(403, `Esta chave só registra leads com origem "${ORIGEM}"`)
+    // A origem diz qual IA está falando: 0800 = Vitor, número novo = Camila
+    const origemEnviada = texto(body.origem, 50)
+    if (origemEnviada && !ehOrigemIa(origemEnviada)) return erro(400, `origem inválida. Aceitas: ${ORIGENS_IA.join(', ')}`)
+    const origem = ehOrigemIa(origemEnviada) ? origemEnviada : ORIGEM_PADRAO
+    const canal = CANAIS_IA[origem]
 
     const faixa = texto(body.faixa_capital, 30)
     if (faixa && !FAIXAS.includes(faixa as never)) return erro(400, `faixa_capital inválida. Aceitos: ${FAIXAS.join(', ')}`)
@@ -62,13 +64,15 @@ export async function POST(req: NextRequest) {
         .eq('id', vendedorId).eq('tipo', 'vendedor').eq('closer', true).eq('ativo', true).maybeSingle()
       if (!closer) return erro(400, 'vendedor_id não é um closer ativo (veja /api/ai/vendedores?papel=closer)')
     }
+    // SDR: só usuário de IA. Sem sdr_id, vale a IA do canal.
+    const sdrId = texto(body.sdr_id, 100)
+    if (sdrId && !USUARIOS_IA.includes(sdrId)) {
+      return erro(400, `sdr_id inválido: esta chave só atribui SDR de IA (${USUARIOS_IA.join(', ')})`)
+    }
     const utm = Object.fromEntries(
-      (['utm_source', 'utm_medium', 'utm_campaign', 'utm_content'] as const)
-        .map((k) => [k, texto(body[k], 300)])
-        .filter(([, v]) => v),
+      UTMS.map((k) => [k, texto(body[k], 300)]).filter(([, v]) => v),
     ) as Record<string, string>
 
-    const autor = chave.usuario_id ?? 'vitor-ia'
     const agora = new Date().toISOString()
     const { data: existentes, error: errBusca } = await db.rpc('api_lead_por_telefone', { p_candidatos: telCandidatos(telefone) })
     if (errBusca) return erro(500, 'Falha ao buscar lead por telefone')
@@ -91,7 +95,7 @@ export async function POST(req: NextRequest) {
         status_funil: locacao ? 'declinado' : 'primeiro_contato',
         motivo_perda: locacao ? 'locacao' : null,
         vendedor_id: vendedorId ?? null,
-        sdr_id: autor,
+        sdr_id: sdrId || canal.usuario_id,
         faixa_capital: faixa ?? null,
         prioridade: prioridade ?? null,
         perfil: perfil ?? null,
@@ -103,12 +107,13 @@ export async function POST(req: NextRequest) {
       }
       const { error } = await db.from('leads').insert(lead)
       if (error) return erro(500, 'Falha ao criar lead')
-      await registrarMovimento(db, lead.id, null, lead.status_funil, autor,
-        locacao ? 'Lead cadastrado pelo Vitor (IA) — locação' : 'Lead cadastrado pelo Vitor (IA)')
+      await registrarMovimento(db, lead.id, null, lead.status_funil, canal.usuario_id,
+        locacao ? `Lead cadastrado ${canal.por} — locação` : `Lead cadastrado ${canal.por}`)
       return ok({ id: lead.id, acao: 'criado', etapa: lead.status_funil }, 201)
     }
 
     // ── Atualizar ────────────────────────────────────────────
+    // No POST, UTM, origem e SDR só preenchem o que está vazio; para corrigir, use PATCH.
     const etapaAtual = atual.status_funil as string
     const upd: Record<string, unknown> = { ultima_interacao_em: agora }
     if (nome) upd.nome = nome
@@ -117,12 +122,12 @@ export async function POST(req: NextRequest) {
     if (prioridade) upd.prioridade = prioridade
     if (perfil) upd.perfil = perfil
     if (vendedorId) upd.vendedor_id = vendedorId
-    if (!atual.sdr_id) upd.sdr_id = autor
+    if (!atual.sdr_id) upd.sdr_id = sdrId || canal.usuario_id
     if (!atual.origem) upd.origem = origem
     // Observação: acrescenta, nunca apaga o que o time escreveu
     if (observacao) {
       const anterior = (atual.observacao as string) || ''
-      upd.observacao = anterior ? `${anterior}\n\n[Vitor] ${observacao}` : observacao
+      upd.observacao = anterior ? `${anterior}\n\n[${canal.curto}] ${observacao}` : observacao
     }
     // UTMs: preserva a atribuição original
     for (const [k, v] of Object.entries(utm)) if (!atual[k]) upd[k] = v
@@ -141,11 +146,11 @@ export async function POST(req: NextRequest) {
     }
     if (novaEtapa) upd.status_funil = novaEtapa
 
-    const { error } = await db.from('leads').update(upd).eq('id', atual.id as string)
-    if (error) return erro(500, 'Falha ao atualizar lead')
+    const r = await atualizarLead(db, chave, 'POST /leads', atual, upd)
+    if ('resposta' in r) return r.resposta
     if (novaEtapa) {
-      await registrarMovimento(db, atual.id as string, etapaAtual, novaEtapa, autor,
-        novaEtapa === 'declinado' ? 'Motivo: locacao (Vitor IA)' : 'Reativado pelo Vitor (IA)')
+      await registrarMovimento(db, atual.id as string, etapaAtual, novaEtapa, canal.usuario_id,
+        novaEtapa === 'declinado' ? `Motivo: locacao (${canal.curto} IA)` : `Reativado ${canal.por}`)
     }
     return ok({ id: atual.id, acao: 'atualizado', etapa: novaEtapa ?? etapaAtual })
   })

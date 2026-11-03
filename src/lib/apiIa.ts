@@ -11,6 +11,7 @@ export type Escopo =
   | 'leads:escrever'
   | 'leads:atribuir'
   | 'anotacoes:criar'
+  | 'anotacoes:ler'
   | 'vendedores:listar'
 
 export interface Chave {
@@ -52,10 +53,14 @@ export function ok(dados: Record<string, unknown>, status = 200) {
   return NextResponse.json({ ok: true, ...dados }, { status })
 }
 
+export const semPermissao = (chave: Chave, escopo: Escopo) =>
+  chave.escopos.includes(escopo) ? null : erro(403, `Esta chave não tem permissão para ${escopo}`)
+
 // ── Autenticação + escopo + limite por minuto ────────────────
+// Sem `escopo`, só autentica: a rota confere as permissões depois (ex.: PATCH por campo).
 export async function autenticar(
   req: NextRequest,
-  escopo: Escopo,
+  escopo?: Escopo,
 ): Promise<{ chave: Chave; db: SupabaseClient } | { resposta: NextResponse }> {
   const raw = req.headers.get('x-ai-key')
   if (!raw) return { resposta: erro(401, 'Header x-ai-key ausente') }
@@ -69,9 +74,8 @@ export async function autenticar(
     .maybeSingle()
   if (!chave) return { resposta: erro(401, 'Chave inválida ou desativada') }
 
-  if (!chave.escopos.includes(escopo)) {
-    return { resposta: erro(403, `Esta chave não tem permissão para ${escopo}`) }
-  }
+  const negado = escopo ? semPermissao(chave as Chave, escopo) : null
+  if (negado) return { resposta: negado }
 
   const { data: usados, error } = await db.rpc('api_contar_uso', { p_chave: chave.id })
   if (error) return { resposta: erro(500, 'Falha ao registrar uso da chave') }
@@ -138,6 +142,68 @@ export async function comIdempotencia(
     .eq('chave_id', chave.id)
     .eq('idem_key', idemKey)
   return resposta
+}
+
+// ── Canais de WhatsApp atendidos por IA ──────────────────────
+// A origem do lead diz qual IA o atende: ela vira o SDR padrão e assina
+// histórico e anotações. Vitor e Camila usam hoje a mesma chave ("vitor").
+export const CANAIS_IA = {
+  whatsapp_0800:   { usuario_id: 'vitor-ia',  nome: 'Vitor (IA)',  curto: 'Vitor',  por: 'pelo Vitor (IA)',  canal: 'WhatsApp 0800' },
+  whatsapp_camila: { usuario_id: 'camila-ia', nome: 'Camila (IA)', curto: 'Camila', por: 'pela Camila (IA)', canal: 'WhatsApp do número novo' },
+} as const
+export type OrigemIa = keyof typeof CANAIS_IA
+export const ORIGEM_PADRAO: OrigemIa = 'whatsapp_0800'
+export const ORIGENS_IA = Object.keys(CANAIS_IA) as OrigemIa[]
+export const USUARIOS_IA: string[] = ORIGENS_IA.map((o) => CANAIS_IA[o].usuario_id)
+export const ehOrigemIa = (v: unknown): v is OrigemIa =>
+  typeof v === 'string' && Object.prototype.hasOwnProperty.call(CANAIS_IA, v)
+// Lead sem origem de IA (ex.: veio de formulário) assina como o canal padrão (Vitor), como antes.
+export const canalDaOrigem = (origem: unknown) => CANAIS_IA[ehOrigemIa(origem) ? origem : ORIGEM_PADRAO]
+
+export const texto = (v: unknown, max: number) => (typeof v === 'string' ? v.trim().slice(0, max) : undefined)
+
+// ── Atualização de lead com auditoria ────────────────────────
+// Toda mudança destes campos feita por chave de IA num lead que já existe
+// vai para api_auditoria (valor anterior → novo).
+const CAMPOS_AUDITADOS = [
+  'utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_anuncio', 'origem', 'sdr_id', 'vendedor_id',
+]
+const comoTexto = (v: unknown) => (v === null || v === undefined || v === '' ? null : String(v))
+
+// A auditoria é gravada ANTES do update e apagada se o update falhar:
+// nunca fica alteração sem registro.
+export async function atualizarLead(
+  db: SupabaseClient,
+  chave: Chave,
+  rota: string,
+  atual: Record<string, unknown>,
+  upd: Record<string, unknown>,
+): Promise<{ alterados: string[] } | { resposta: NextResponse }> {
+  const alterados = Object.keys(upd)
+    .filter((c) => c !== 'ultima_interacao_em' && comoTexto(upd[c]) !== comoTexto(atual[c]))
+  const auditoria = alterados.filter((c) => CAMPOS_AUDITADOS.includes(c)).map((campo) => ({
+    chave_id: chave.id,
+    chave_nome: chave.nome,
+    lead_id: atual.id as string,
+    rota,
+    campo,
+    valor_anterior: comoTexto(atual[campo]),
+    valor_novo: comoTexto(upd[campo]),
+  }))
+
+  let ids: number[] = []
+  if (auditoria.length) {
+    const { data, error } = await db.from('api_auditoria').insert(auditoria).select('id')
+    if (error) return { resposta: erro(500, 'Falha ao registrar auditoria') }
+    ids = (data ?? []).map((r) => r.id as number)
+  }
+
+  const { error } = await db.from('leads').update(upd).eq('id', atual.id as string)
+  if (error) {
+    if (ids.length) await db.from('api_auditoria').delete().in('id', ids)
+    return { resposta: erro(500, 'Falha ao atualizar lead') }
+  }
+  return { alterados }
 }
 
 export async function lerJson(req: NextRequest): Promise<Record<string, unknown> | null> {
