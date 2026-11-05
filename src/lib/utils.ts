@@ -37,9 +37,10 @@ const CRIATIVOS_PERFORMATICOS = [
   'video_resultado_antes_depois',
 ]
 
-// Estágios onde o lead de fato respondeu/engajou (agendou reunião ou avançou)
+// Estágios onde o lead de fato respondeu/engajou (agendou reunião ou avançou).
+// nao_compareceu = agendou e faltou: conta como agendou, nunca como reunião realizada.
 const RESPONDEU_STAGES: StatusFunil[] = [
-  'agendado', 'reuniao_realizada', 'contrato_enviado', 'contrato_assinado', 'fechado',
+  'agendado', 'nao_compareceu', 'reuniao_realizada', 'contrato_enviado', 'contrato_assinado', 'fechado',
 ]
 
 // ─── SCORE DE LEAD (0-100) ────────────────────────────────────────────────────
@@ -109,7 +110,7 @@ export function calcMetricasPorCriativo(leads: Lead[]): MetricaCriativo[] {
       const total = grupo.length
       const respondeu = grupo.filter((l) => RESPONDEU_STAGES.includes(l.status_funil)).length
       const agendou = grupo.filter((l) =>
-        ['agendado', 'reuniao_realizada', 'contrato_enviado', 'contrato_assinado', 'fechado'].includes(l.status_funil)
+        ['agendado', 'nao_compareceu', 'reuniao_realizada', 'contrato_enviado', 'contrato_assinado', 'fechado'].includes(l.status_funil)
       ).length
       const reuniaoFeita = grupo.filter((l) =>
         ['reuniao_realizada', 'contrato_enviado', 'contrato_assinado', 'fechado'].includes(l.status_funil)
@@ -171,7 +172,7 @@ export function calcFunnelMetrics(leads: Lead[]) {
   const total = organicos.length
   const respondeu = organicos.filter((l) => RESPONDEU_STAGES.includes(l.status_funil)).length
   const agendados = organicos.filter((l) =>
-    ['agendado', 'reuniao_realizada', 'contrato_enviado', 'contrato_assinado', 'fechado'].includes(l.status_funil)
+    ['agendado', 'nao_compareceu', 'reuniao_realizada', 'contrato_enviado', 'contrato_assinado', 'fechado'].includes(l.status_funil)
   ).length
   // Reuniões e fechamentos contam de TODOS (incluindo importados)
   const reunioes = leads.filter((l) =>
@@ -211,16 +212,16 @@ const GARGALO_STAGES: { status: StatusFunil; includes: StatusFunil[] }[] = [
   {
     status: 'trafego_pago',
     includes: ['trafego_pago', 'primeiro_contato', 'followup1', 'followup2', 'followup3',
-      'agendado', 'reuniao_realizada', 'contrato_enviado', 'contrato_assinado', 'fechado'],
+      'agendado', 'nao_compareceu', 'reuniao_realizada', 'contrato_enviado', 'contrato_assinado', 'fechado'],
   },
   {
     status: 'primeiro_contato',
     includes: ['primeiro_contato', 'followup1', 'followup2', 'followup3',
-      'agendado', 'reuniao_realizada', 'contrato_enviado', 'contrato_assinado', 'fechado'],
+      'agendado', 'nao_compareceu', 'reuniao_realizada', 'contrato_enviado', 'contrato_assinado', 'fechado'],
   },
   {
     status: 'agendado',
-    includes: ['agendado', 'reuniao_realizada', 'contrato_enviado', 'contrato_assinado', 'fechado'],
+    includes: ['agendado', 'nao_compareceu', 'reuniao_realizada', 'contrato_enviado', 'contrato_assinado', 'fechado'],
   },
   {
     status: 'reuniao_realizada',
@@ -307,7 +308,7 @@ export function calcMetricasPorCampanha(leads: Lead[]) {
     const total = grupo.length
     const respondeu = grupo.filter((l) => RESPONDEU_STAGES.includes(l.status_funil)).length
     const agendou = grupo.filter((l) =>
-      ['agendado', 'reuniao_realizada', 'contrato_enviado', 'contrato_assinado', 'fechado'].includes(l.status_funil)
+      ['agendado', 'nao_compareceu', 'reuniao_realizada', 'contrato_enviado', 'contrato_assinado', 'fechado'].includes(l.status_funil)
     ).length
     const reuniaoFeita = grupo.filter((l) =>
       ['reuniao_realizada', 'contrato_enviado', 'contrato_assinado', 'fechado'].includes(l.status_funil)
@@ -371,7 +372,7 @@ export function calcMetricasPorVendedor(
       const total = vLeads.length
       const respondeu = vLeads.filter((l) => RESPONDEU_STAGES.includes(l.status_funil)).length
       const agendados = vLeads.filter((l) =>
-        ['agendado','reuniao_realizada','contrato_enviado','contrato_assinado','fechado'].includes(l.status_funil)
+        ['agendado','nao_compareceu','reuniao_realizada','contrato_enviado','contrato_assinado','fechado'].includes(l.status_funil)
       ).length
       const reunioes = vLeads.filter((l) =>
         ['reuniao_realizada','contrato_enviado','contrato_assinado','fechado'].includes(l.status_funil)
@@ -430,6 +431,7 @@ const STATUS_STEPS: Record<StatusFunil, number> = {
   followup2: 3,
   followup3: 4,
   agendado: 5,
+  nao_compareceu: 5,   // mesmo degrau de agendado: chegou a agendar, não passou da reunião
   reuniao_realizada: 6,
   contrato_enviado: 7,
   contrato_assinado: 8,

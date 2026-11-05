@@ -95,6 +95,7 @@ export default function AgendaPage() {
 
   const STATUS_BADGE: Record<string, string> = {
     agendado: 'bg-amber-600/20 text-amber-400',
+    nao_compareceu: 'bg-rose-600/20 text-rose-500',
     reuniao_realizada: 'bg-violet-600/20 text-violet-400',
     contrato_enviado: 'bg-sky-600/20 text-sky-400',
     contrato_assinado: 'bg-teal-600/20 text-teal-400',

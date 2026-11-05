@@ -24,7 +24,7 @@ import {
 import {
   ArrowLeft, Phone, Mail, Clock, ChevronRight, Send, Thermometer, Video,
   DollarSign, CheckCircle, XCircle, Edit3, Save, X, User, Calendar,
-  AlertTriangle, Bell, Zap, TrendingUp, Trash2, CalendarClock, Pencil, ArrowRightLeft,
+  AlertTriangle, Bell, Zap, TrendingUp, Trash2, CalendarClock, Pencil, ArrowRightLeft, UserX,
 } from 'lucide-react'
 import TransferLeadModal from '@/components/leads/TransferLeadModal'
 
@@ -40,6 +40,7 @@ const STATUS_STYLES: Partial<Record<StatusFunil, { bg: string; color: string; bo
   followup2:          { bg: '#F0F9FF', color: '#0369A1', border: '#BAE6FD' },
   followup3:          { bg: '#FFF7ED', color: '#C2410C', border: '#FED7AA' },
   agendado:           { bg: '#FFFBEB', color: '#B45309', border: '#FDE68A' },
+  nao_compareceu:     { bg: '#FFF1F2', color: '#BE123C', border: '#FECDD3' },
   reuniao_realizada:  { bg: '#FAF5FF', color: '#7C3AED', border: '#DDD6FE' },
   contrato_enviado:   { bg: '#F0F9FF', color: '#0284C7', border: '#BAE6FD' },
   contrato_assinado:  { bg: '#F0FDF4', color: '#166534', border: '#BBF7D0' },
@@ -295,7 +296,7 @@ function ScoreBreakdown({ lead }: { lead: Lead }) {
 
   const items = [
     { label: 'Agendou ou avançou no funil', pontos: 30,
-      ativo: ['agendado','reuniao_realizada','contrato_enviado','contrato_assinado','fechado'].includes(lead.status_funil) },
+      ativo: ['agendado','nao_compareceu','reuniao_realizada','contrato_enviado','contrato_assinado','fechado'].includes(lead.status_funil) },
     { label: 'Reunião agendada', pontos: 30, ativo: lead.reuniao_agendada },
     { label: `Temperatura: ${TEMPERATURA_LABELS[lead.temperatura]}`, pontos: { frio: 5, morno: 10, quente: 20, muito_quente: 30, desqualificado: 0 }[lead.temperatura], ativo: lead.temperatura !== 'desqualificado' },
     { label: 'Criativo de alta performance', pontos: 10,
@@ -392,7 +393,12 @@ function LeadDetailContent({ lead }: { lead: Lead }) {
     [historico, lead.id]
   )
   const leadAlertas   = useMemo(() => alertas.filter((a) => a.lead_id === lead.id), [alertas, lead.id])
-  const currentStepIdx = FUNIL_ORDER.indexOf(lead.status_funil)
+  // Barra de etapas: sem Declinado e sem Não compareceu (fora da sequência normal).
+  // Lead em Não compareceu aparece como tendo chegado até Agendado.
+  const etapasBarra: StatusFunil[] = FUNIL_ORDER.filter((s) => s !== 'declinado' && s !== 'nao_compareceu')
+  const currentStepIdx = lead.status_funil === 'nao_compareceu'
+    ? etapasBarra.indexOf('agendado') + 1
+    : etapasBarra.indexOf(lead.status_funil)
 
   const handleAddAnotacao = () => {
     if (!novaAnotacao.trim()) return
@@ -410,7 +416,8 @@ function LeadDetailContent({ lead }: { lead: Lead }) {
       hora_reuniao: scheduleForm.hora,
       link_meet: scheduleForm.link || undefined,
     })
-    if (!isRescheduling) {
+    // Remarcar quem não compareceu volta o lead para Agendado
+    if (!isRescheduling || lead.status_funil === 'nao_compareceu') {
       moveLead(lead.id, 'agendado')
     }
 
@@ -542,7 +549,7 @@ function LeadDetailContent({ lead }: { lead: Lead }) {
         <div className="rounded-xl p-4" style={{ background: '#FFFFFF', border: '1px solid #E0E6ED' }}>
           <p className="text-[9px] font-bold uppercase tracking-widest text-[#A0AEC0] mb-3">Etapa no Funil</p>
           <div className="flex items-center gap-1 overflow-x-auto pb-1">
-            {FUNIL_ORDER.filter((s) => s !== 'declinado').map((status, idx) => {
+            {etapasBarra.map((status, idx) => {
               const isActive = status === lead.status_funil
               const isPast   = idx < currentStepIdx && lead.status_funil !== 'declinado'
               return (
@@ -557,7 +564,7 @@ function LeadDetailContent({ lead }: { lead: Lead }) {
                         : { background: '#F5F7FA', color: '#6B7C93', border: '1px solid #E0E6ED' }}>
                     {FUNIL_LABELS[status]}
                   </button>
-                  {idx < FUNIL_ORDER.length - 2 && (
+                  {idx < etapasBarra.length - 1 && (
                     <ChevronRight size={13} className="mx-0.5 flex-shrink-0"
                       style={{ color: isPast ? '#86EFAC' : '#D1D9E6' }} />
                   )}
@@ -978,8 +985,12 @@ function LeadDetailContent({ lead }: { lead: Lead }) {
                 </h3>
               </div>
               {lead.reuniao_agendada && !showSchedule ? (
-                <div className="rounded-xl p-4 space-y-2" style={{ background: '#FFFBEB', border: '1px solid #FDE68A' }}>
-                  <p className="font-bold text-sm" style={{ color: '#B45309' }}>Reunião Agendada</p>
+                <div className="rounded-xl p-4 space-y-2" style={lead.status_funil === 'nao_compareceu'
+                  ? { background: '#FFF1F2', border: '1px solid #FECDD3' }
+                  : { background: '#FFFBEB', border: '1px solid #FDE68A' }}>
+                  {lead.status_funil === 'nao_compareceu'
+                    ? <p className="font-bold text-sm flex items-center gap-1.5" style={{ color: '#BE123C' }}><UserX size={14} /> Não compareceu</p>
+                    : <p className="font-bold text-sm" style={{ color: '#B45309' }}>Reunião Agendada</p>}
                   <p className="text-sm text-[#374151]">
                     {formatDate(lead.data_reuniao || '')} {lead.hora_reuniao && `às ${lead.hora_reuniao}`}
                   </p>
@@ -995,6 +1006,15 @@ function LeadDetailContent({ lead }: { lead: Lead }) {
                     style={{ background: 'linear-gradient(135deg, #7C3AED, #6D28D9)' }}>
                     Reunião Realizada
                   </button>
+                  {lead.status_funil === 'agendado' && (
+                    <button onClick={() => moveLead(lead.id, 'nao_compareceu')}
+                      className="w-full py-2 rounded-lg text-xs font-semibold transition-colors border flex items-center justify-center gap-1.5"
+                      style={{ background: '#FFF1F2', color: '#BE123C', borderColor: '#FECDD3' }}
+                      onMouseEnter={(e) => e.currentTarget.style.background = '#FFE4E6'}
+                      onMouseLeave={(e) => e.currentTarget.style.background = '#FFF1F2'}>
+                      <UserX size={13} /> Não compareceu
+                    </button>
+                  )}
                   <button onClick={startReschedule}
                     className="w-full py-2 rounded-lg text-xs font-semibold transition-colors border flex items-center justify-center gap-1.5"
                     style={{ background: '#F0F9FF', color: '#0284C7', borderColor: '#BAE6FD' }}

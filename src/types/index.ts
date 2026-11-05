@@ -14,6 +14,7 @@ export type StatusFunil =
   | 'followup2'
   | 'followup3'
   | 'agendado'
+  | 'nao_compareceu'
   | 'reuniao_realizada'
   | 'contrato_enviado'
   | 'contrato_assinado'
@@ -164,6 +165,7 @@ export const FUNIL_LABELS: Record<StatusFunil, string> = {
   followup2: 'Follow-up 2',
   followup3: 'Follow-up 3',
   agendado: 'Agendados',
+  nao_compareceu: 'Não Compareceu',
   reuniao_realizada: 'Reuniao Feita',
   contrato_enviado: 'Contrato Enviado',
   contrato_assinado: 'Contrato Assinado',
@@ -212,6 +214,7 @@ export const FUNIL_ORDER: StatusFunil[] = [
   'followup2',
   'followup3',
   'agendado',
+  'nao_compareceu',     // agendou e faltou: conta como agendado, nunca como reunião realizada
   'reuniao_realizada',
   'contrato_enviado',
   'contrato_assinado',

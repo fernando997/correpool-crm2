@@ -105,19 +105,19 @@ const CRIATIVO_LABELS: Record<string, string> = {
 // ── Shared status/temp maps ───────────────────────────────────────────────────
 const ST_CLR: Record<string, string> = {
   trafego_pago:'#6B7C93',primeiro_contato:'#3B82F6',followup1:'#60A5FA',
-  followup2:'#818CF8',followup3:'#A78BFA',agendado:'#F59E0B',
+  followup2:'#818CF8',followup3:'#A78BFA',agendado:'#F59E0B',nao_compareceu:'#F43F5E',
   reuniao_realizada:'#F97316',contrato_enviado:'#8B5CF6',contrato_assinado:'#7C3AED',
   fechado:'#10B981',declinado:'#EF4444',
 }
 const ST_LBL: Record<string, string> = {
   trafego_pago:'Tráfego',primeiro_contato:'1o Contato',followup1:'FU1',
-  followup2:'FU2',followup3:'FU3',agendado:'Agendado',
+  followup2:'FU2',followup3:'FU3',agendado:'Agendado',nao_compareceu:'Faltou',
   reuniao_realizada:'Reunião',contrato_enviado:'Ctr. Env.',contrato_assinado:'Ctr. Ass.',
   fechado:'Fechado',declinado:'Declinado',
 }
 const TP_CLR: Record<string, string> = { frio:'#60a5fa',morno:'#f59e0b',quente:'#f97316',muito_quente:'#ef4444',desqualificado:'#9CA3AF' }
 const TP_LBL: Record<string, string> = { frio:'Frio',morno:'Morno',quente:'Quente',muito_quente:'M. Quente',desqualificado:'Desq.' }
-const AGENDOU = ['agendado','reuniao_realizada','contrato_enviado','contrato_assinado','fechado']
+const AGENDOU = ['agendado','nao_compareceu','reuniao_realizada','contrato_enviado','contrato_assinado','fechado']
 const CONTATOU = ['primeiro_contato','followup1','followup2','followup3',...AGENDOU]
 
 function LeadsTable({ rows, showVendedor, users }: { rows: any[]; showVendedor?: boolean; users: any[] }) {
@@ -1083,14 +1083,14 @@ export default function DashboardPage() {
     return {
       nome:      v.nome.split(' ')[0],
       Leads:     vLeads.length,
-      Agendados: vLeads.filter((l) => ['agendado','reuniao_realizada','contrato_enviado','contrato_assinado','fechado'].includes(l.status_funil)).length,
+      Agendados: vLeads.filter((l) => ['agendado','nao_compareceu','reuniao_realizada','contrato_enviado','contrato_assinado','fechado'].includes(l.status_funil)).length,
       Fechados:  fechados.length,
       receita,
     }
   })
 
   // ── Admin rankings ────────────────────────────────────────────────────────
-  const AGENDOU_STAGES = ['agendado','reuniao_realizada','contrato_enviado','contrato_assinado','fechado']
+  const AGENDOU_STAGES = ['agendado','nao_compareceu','reuniao_realizada','contrato_enviado','contrato_assinado','fechado']
 
   const vendedorRanking = vendedores.map((v) => {
     const vLeads   = filteredLeads.filter((l) => l.vendedor_id === v.id)

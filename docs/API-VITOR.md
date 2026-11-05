@@ -10,7 +10,7 @@ Cabeçalho `Idempotency-Key: <id único da ação>` obrigatório em POST e PATCH
 |---|---|---|
 | GET | `/leads/busca?telefone=+5511999999999` | Lead existe? → `{ id, etapa, vendedor_id }` ou 404 |
 | POST | `/leads` | Cria ou atualiza pelo telefone |
-| PATCH | `/leads/{id}` | Closer, SDR, etapa (`primeiro_contato`/`agendado`), reunião, UTM e origem |
+| PATCH | `/leads/{id}` | Closer, SDR, etapa (`primeiro_contato`/`agendado`/`nao_compareceu`), reunião, UTM e origem |
 | GET | `/leads/{id}/anotacoes` | Todas as anotações do lead (de qualquer autor) |
 | POST | `/leads/{id}/anotacoes` | Anotação assinada pela IA do canal do lead |
 | GET | `/vendedores?papel=closer` | Closers ativos `{ id, nome, fila }` |
@@ -42,6 +42,8 @@ Cabeçalho `Idempotency-Key: <id único da ação>` obrigatório em POST e PATCH
 ```
 → `200 { "ok": true, "id": "…", "etapa": "…", "alterados": ["utm_anuncio", "origem", …] }` (`alterados` vazio = nada mudou).
 - Para `agendado` são obrigatórios closer e data. **Fila** (`fila: true` na lista de closers) recebe lead, mas não recebe reunião → 409.
+- **Não compareceu:** `{ "etapa": "nao_compareceu" }`. Só para lead em `agendado` (outra etapa → 409); não envie `data_reuniao` junto (400). A reunião deixa de contar como ocupada na agenda da Camila, porque o lead sai de `agendado`.
+- **Remarcar quem não compareceu:** `{ "etapa": "agendado", "data_reuniao": "<nova data>", "link_reuniao": "…" }`. A nova `data_reuniao` é obrigatória (400 sem ela).
 - UTM e origem: em lead **criado pela IA** o valor é corrigido. Em lead que veio de outro canal (formulário etc.) só preenche campo vazio; se já tiver valor diferente → 409.
 - `sdr_id`: só `vitor-ia` ou `camila-ia`. Se o lead já tem SDR humano → 409.
 - Toda mudança de UTM, origem, SDR e closer fica registrada na auditoria do CRM (valor anterior → novo, data/hora e chave).

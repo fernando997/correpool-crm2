@@ -25,19 +25,19 @@ const RED    = '#dc2626'
 
 const STATUS_LABELS: Record<string, string> = {
   trafego_pago: 'Tráfego', primeiro_contato: '1o Contato', followup1: 'Follow-up 1',
-  followup2: 'Follow-up 2', followup3: 'Follow-up 3', agendado: 'Agendado',
+  followup2: 'Follow-up 2', followup3: 'Follow-up 3', agendado: 'Agendado', nao_compareceu: 'Faltou',
   reuniao_realizada: 'Reunião', contrato_enviado: 'Ctr. Env.', contrato_assinado: 'Ctr. Ass.',
   fechado: 'Fechado', declinado: 'Declinado',
 }
 const STATUS_COLORS: Record<string, string> = {
   trafego_pago: '#6B7C93', primeiro_contato: '#3B82F6', followup1: '#60A5FA',
-  followup2: '#818CF8', followup3: '#A78BFA', agendado: '#F59E0B',
+  followup2: '#818CF8', followup3: '#A78BFA', agendado: '#F59E0B', nao_compareceu: '#F43F5E',
   reuniao_realizada: '#F97316', contrato_enviado: '#8B5CF6', contrato_assinado: '#7C3AED',
   fechado: '#10B981', declinado: '#EF4444',
 }
 const FUNIL_ORDER = [
   'trafego_pago','primeiro_contato','followup1','followup2','followup3',
-  'agendado','reuniao_realizada','contrato_enviado','contrato_assinado','fechado','declinado',
+  'agendado','nao_compareceu','reuniao_realizada','contrato_enviado','contrato_assinado','fechado','declinado',
 ]
 
 type Period = '7d' | '30d' | '90d' | 'todos'

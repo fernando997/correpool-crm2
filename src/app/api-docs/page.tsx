@@ -323,7 +323,7 @@ function GetLeads({ BASE_URL, HEADERS }: { BASE_URL: string; HEADERS: Record<str
     setLoading(false)
   }
 
-  const STATUS_OPTIONS = ['trafego_pago','primeiro_contato','followup1','followup2','followup3','agendado','reuniao_realizada','contrato_enviado','contrato_assinado','fechado','declinado']
+  const STATUS_OPTIONS = ['trafego_pago','primeiro_contato','followup1','followup2','followup3','agendado','nao_compareceu','reuniao_realizada','contrato_enviado','contrato_assinado','fechado','declinado']
 
   return (
     <Endpoint method="GET" path="/rest/v1/leads" summary="Listar leads" icon={<List size={14} className="text-blue-500/60 flex-shrink-0" />}>
@@ -379,7 +379,7 @@ function PatchLead({ BASE_URL, HEADERS }: { BASE_URL: string; HEADERS: Record<st
         <div><label className="label block mb-1">status_funil</label>
           <select className="input" value={status} onChange={e => setStatus(e.target.value)}>
             <option value="">— não alterar —</option>
-            {['trafego_pago','primeiro_contato','followup1','followup2','followup3','agendado','reuniao_realizada','contrato_enviado','contrato_assinado','fechado','declinado'].map(s => <option key={s}>{s}</option>)}
+            {['trafego_pago','primeiro_contato','followup1','followup2','followup3','agendado','nao_compareceu','reuniao_realizada','contrato_enviado','contrato_assinado','fechado','declinado'].map(s => <option key={s}>{s}</option>)}
           </select>
         </div>
         <div><label className="label block mb-1">temperatura</label>

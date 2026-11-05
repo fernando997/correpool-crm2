@@ -446,7 +446,7 @@ export default function UsuariosPage() {
             const fechados = leads.filter((l) => l.vendedor_id === user.id && l.status_funil === 'fechado').length
             const agendados = leads.filter((l) =>
               (l.vendedor_id === user.id || l.sdr_id === user.id) &&
-              ['agendado', 'reuniao_realizada', 'contrato_enviado', 'contrato_assinado', 'fechado'].includes(l.status_funil)
+              ['agendado', 'nao_compareceu', 'reuniao_realizada', 'contrato_enviado', 'contrato_assinado', 'fechado'].includes(l.status_funil)
             ).length
 
             // Multi-vendor support: split comma-separated IDs

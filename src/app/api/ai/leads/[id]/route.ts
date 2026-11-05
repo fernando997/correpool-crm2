@@ -4,13 +4,13 @@ import {
   texto, atualizarLead, canalDaOrigem, ehOrigemIa, ORIGENS_IA, USUARIOS_IA,
 } from '@/lib/apiIa'
 
-// PATCH /api/ai/leads/{id} — atribui closer e SDR, muda etapa (só primeiro_contato/agendado),
+// PATCH /api/ai/leads/{id} — atribui closer e SDR, muda etapa (só primeiro_contato/agendado/nao_compareceu),
 // marca reunião e corrige UTM/origem. Mudanças de UTM, origem, SDR e closer vão para api_auditoria.
 // DELETE /api/ai/leads/{id} — não permitido para chaves de IA.
 
-const ETAPAS_PERMITIDAS = ['primeiro_contato', 'agendado']
+const ETAPAS_PERMITIDAS = ['primeiro_contato', 'agendado', 'nao_compareceu']
 const ETAPAS_EXISTENTES = [
-  'trafego_pago', 'primeiro_contato', 'followup1', 'followup2', 'followup3', 'agendado',
+  'trafego_pago', 'primeiro_contato', 'followup1', 'followup2', 'followup3', 'agendado', 'nao_compareceu',
   'reuniao_realizada', 'contrato_enviado', 'contrato_assinado', 'fechado', 'declinado', 'descartado',
 ]
 // A partir daqui o lead é do closer: a IA não volta etapa
@@ -79,6 +79,17 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
       if (ETAPAS_DO_CLOSER.includes(lead.status_funil)) {
         return erro(409, `Lead já está em "${lead.status_funil}" com o closer; a IA não altera a etapa`)
       }
+      // Só falta quem tinha reunião marcada
+      if (etapa === 'nao_compareceu' && !['agendado', 'nao_compareceu'].includes(lead.status_funil)) {
+        return erro(409, `Só lead em "agendado" pode ir para nao_compareceu (este está em "${lead.status_funil}")`)
+      }
+      if (etapa === 'nao_compareceu' && body.data_reuniao !== undefined) {
+        return erro(400, 'Não envie data_reuniao com nao_compareceu. Para remarcar, use etapa agendado com a nova data')
+      }
+      // Remarcar quem faltou exige data nova (a antiga já passou)
+      if (etapa === 'agendado' && lead.status_funil === 'nao_compareceu' && body.data_reuniao === undefined) {
+        return erro(400, 'Para remarcar quem não compareceu, informe a nova data_reuniao')
+      }
       if (etapa !== lead.status_funil) novaEtapa = etapa
     }
 
@@ -141,9 +152,12 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 
     if (novaEtapa) {
       const canal = canalDaOrigem(upd.origem ?? lead.origem)
+      const quando = `${upd.data_reuniao ?? ''} ${upd.hora_reuniao ?? ''}`.trim()
       await registrarMovimento(db, params.id, lead.status_funil, novaEtapa, canal.usuario_id,
-        novaEtapa === 'agendado' ? `Reunião agendada ${canal.por} ${upd.data_reuniao ?? ''} ${upd.hora_reuniao ?? ''}`.trim()
-          : `Movido ${canal.por}`)
+        novaEtapa === 'agendado'
+          ? (lead.status_funil === 'nao_compareceu' ? `Reunião remarcada ${canal.por} ${quando}` : `Reunião agendada ${canal.por} ${quando}`).trim()
+          : novaEtapa === 'nao_compareceu' ? `Não compareceu à reunião — marcado ${canal.por}`
+            : `Movido ${canal.por}`)
     }
     return ok({ id: params.id, etapa: etapaFinal, alterados: r.alterados })
   })

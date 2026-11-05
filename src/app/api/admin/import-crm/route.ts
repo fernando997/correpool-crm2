@@ -4,7 +4,7 @@ import type { Lead, StatusFunil, Temperatura } from '@/types'
 
 const VALID_STATUS: StatusFunil[] = [
   'trafego_pago', 'primeiro_contato', 'followup1', 'followup2', 'followup3',
-  'agendado', 'reuniao_realizada', 'contrato_enviado', 'contrato_assinado',
+  'agendado', 'nao_compareceu', 'reuniao_realizada', 'contrato_enviado', 'contrato_assinado',
   'fechado', 'declinado',
 ]
 

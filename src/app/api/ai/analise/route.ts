@@ -195,7 +195,8 @@ export async function GET(req: NextRequest) {
   // ── Agregados ────────────────────────────────────────────────
   const funil = FUNIL_ORDER.map((etapa) => {
     const atual = leads.filter((l) => l.status_funil === etapa).length
-    const atingiu = etapa === 'declinado' ? atual : leads.filter(ATINGIU(etapa)).length
+    // Declinado e Não compareceu são desvios, não degraus: "atingiu" = quem está nela
+    const atingiu = etapa === 'declinado' || etapa === 'nao_compareceu' ? atual : leads.filter(ATINGIU(etapa)).length
     return { etapa, label: FUNIL_LABELS[etapa], leads_na_etapa: atual, leads_que_atingiram: atingiu }
   })
 
@@ -275,7 +276,7 @@ export async function GET(req: NextRequest) {
     gerado_em: new Date().toISOString(),
     filtros: { inicio, fim, vendedor_id: vendedorId, incluir: Array.from(incluir), incluir_contato: incluirContato, min_leads: minLeads, top },
     dicionario: {
-      descricao: 'CRM de vendas. Cada lead percorre o funil (status_funil). "fechado" e "contrato_assinado" contam como venda; "declinado" é perda (ver motivo_perda). Receita = valor_fechado (ou valor_contrato). valor_estimado é a expectativa antes do fechamento.',
+      descricao: 'CRM de vendas. Cada lead percorre o funil (status_funil). "fechado" e "contrato_assinado" contam como venda; "declinado" é perda (ver motivo_perda); "nao_compareceu" = agendou e faltou à reunião (conta em agendados, não em reuniões realizadas). Receita = valor_fechado (ou valor_contrato). valor_estimado é a expectativa antes do fechamento.',
       como_analisar: 'Use resumo.rankings para saber melhores/piores criativos, campanhas, sources, anúncios, posicionamentos, origens (canal de WhatsApp da IA), vendedores e SDRs (conversão, receita, declínio, agendamento e principal motivo de perda). resumo.marketing traz as métricas completas de cada valor de UTM e resumo.por_origem as de cada canal. Valores "nao_informado" = campo vazio no lead.',
       etapas_funil: FUNIL_LABELS,
       temperaturas: TEMPERATURA_LABELS,

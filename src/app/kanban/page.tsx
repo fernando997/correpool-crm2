@@ -7,7 +7,7 @@ import { FUNIL_LABELS, FUNIL_ORDER, TEMPERATURA_COLORS, TEMPERATURA_LABELS, type
 import { cn, formatCurrency, formatDuration, scoreBg } from '@/lib/utils'
 import {
   Phone, Calendar, ChevronDown, Plus, Search, X, Tag, GripVertical,
-  Clock, AlertTriangle, DollarSign, CheckCircle, Thermometer, Download, CalendarClock, ArrowRightLeft, ArrowUpDown,
+  Clock, AlertTriangle, DollarSign, CheckCircle, Thermometer, Download, CalendarClock, ArrowRightLeft, ArrowUpDown, UserX,
 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import AddLeadModal from '@/components/leads/AddLeadModal'
@@ -265,7 +265,7 @@ function leadSortKey(l: Lead) {
   return `${l.data_criacao ?? ''}|${l.created_at ?? ''}`
 }
 
-type CardAction = 'open' | 'left' | 'right' | 'schedule' | 'transfer'
+type CardAction = 'open' | 'left' | 'right' | 'schedule' | 'transfer' | 'noshow'
 
 // memo: com milhares de leads, só redesenha o card que mudou
 const LeadCard = memo(function LeadCard({
@@ -395,6 +395,15 @@ const LeadCard = memo(function LeadCard({
               <ArrowRightLeft size={10} />
             </button>
           )}
+          {lead.status_funil === 'agendado' && (
+            <button
+              onClick={(e) => { e.stopPropagation(); onAction('noshow', lead) }}
+              className="w-5 h-5 rounded opacity-0 group-hover:opacity-100 bg-[#D1D9E6] hover:bg-rose-500/20 flex items-center justify-center text-[#6B7C93] hover:text-rose-500 transition-colors"
+              title="Não compareceu"
+            >
+              <UserX size={11} />
+            </button>
+          )}
           {isFollowupStage && (
             <button
               onClick={(e) => { e.stopPropagation(); onAction('schedule', lead) }}
@@ -438,6 +447,7 @@ const COL_COLORS: Partial<Record<StatusFunil, string>> = {
   contrato_assinado: 'text-emerald-300',
   contrato_enviado: 'text-sky-400',
   agendado: 'text-amber-400',
+  nao_compareceu: 'text-rose-500',
   reuniao_realizada: 'text-violet-400',
   declinado: 'text-red-400',
 }
@@ -531,7 +541,7 @@ export default function KanbanPage() {
     const FUNIL_PT: Record<string, string> = {
       trafego_pago: 'Trafego Pago', primeiro_contato: '1o Contato',
       followup1: 'Follow-up 1', followup2: 'Follow-up 2', followup3: 'Follow-up 3',
-      agendado: 'Agendado', reuniao_realizada: 'Reuniao Realizada',
+      agendado: 'Agendado', nao_compareceu: 'Nao Compareceu', reuniao_realizada: 'Reuniao Realizada',
       contrato_enviado: 'Contrato Enviado', contrato_assinado: 'Contrato Assinado',
       fechado: 'Fechado', declinado: 'Declinado',
     }
@@ -650,15 +660,19 @@ export default function KanbanPage() {
     setDragOverCol(null)
   }
 
+  // As setas pulam "Não compareceu": Agendado → Reunião Feita continua a um clique.
+  // Para marcar a falta: arrastar para a coluna ou usar o botão do card.
   function handleMoveLeft(lead: Lead) {
-    const idx = FUNIL_ORDER.indexOf(lead.status_funil)
-    if (idx > 0) tryMove(lead, FUNIL_ORDER[idx - 1])
+    let idx = FUNIL_ORDER.indexOf(lead.status_funil) - 1
+    if (FUNIL_ORDER[idx] === 'nao_compareceu') idx--
+    if (idx >= 0) tryMove(lead, FUNIL_ORDER[idx])
   }
 
   function handleMoveRight(lead: Lead) {
-    const idx = FUNIL_ORDER.indexOf(lead.status_funil)
-    const next = FUNIL_ORDER[idx + 1]
-    if (idx < FUNIL_ORDER.length - 1 && next !== 'declinado' && sdrCanMove(next)) {
+    let idx = FUNIL_ORDER.indexOf(lead.status_funil) + 1
+    if (FUNIL_ORDER[idx] === 'nao_compareceu') idx++
+    const next = FUNIL_ORDER[idx]
+    if (next && next !== 'declinado' && sdrCanMove(next)) {
       tryMove(lead, next)
     }
   }
@@ -677,6 +691,7 @@ export default function KanbanPage() {
     right: handleMoveRight,
     schedule: setSchedulingLead,
     transfer: setTransferingLead,
+    noshow: (lead) => tryMove(lead, 'nao_compareceu'),
   }
   const onCardAction = useCallback((action: CardAction, lead: Lead) => actionsRef.current[action](lead), [])
 

@@ -165,7 +165,7 @@ function getRecomendacao(taxa_conv: number, ticket: number, taxa_agend: number):
 }
 
 // ── Evolução de criativo por semana ───────────────────────────────────────────
-const RESPONDEU_EV = ['agendado','reuniao_realizada','contrato_enviado','contrato_assinado','fechado']
+const RESPONDEU_EV = ['agendado','nao_compareceu','reuniao_realizada','contrato_enviado','contrato_assinado','fechado']
 function getWeekKey(dateStr: string) {
   const d = new Date(dateStr)
   const day = d.getDay()
@@ -218,13 +218,13 @@ function calcCriativoDailyLeads(leads: Lead[], criativo: string) {
 // ── Criativo Drawer ──────────────────────────────────────────────────────────
 const DRAWER_STATUS_LABELS: Record<string, string> = {
   trafego_pago: 'Tráfego', primeiro_contato: '1o Contato', followup1: 'Follow-up 1',
-  followup2: 'Follow-up 2', followup3: 'Follow-up 3', agendado: 'Agendado',
+  followup2: 'Follow-up 2', followup3: 'Follow-up 3', agendado: 'Agendado', nao_compareceu: 'Faltou',
   reuniao_realizada: 'Reunião', contrato_enviado: 'Ctr. Env.', contrato_assinado: 'Ctr. Ass.',
   fechado: 'Fechado', declinado: 'Declinado',
 }
 const DRAWER_STATUS_COLORS: Record<string, string> = {
   trafego_pago: '#6B7C93', primeiro_contato: '#3B82F6', followup1: '#60A5FA',
-  followup2: '#818CF8', followup3: '#A78BFA', agendado: '#F59E0B',
+  followup2: '#818CF8', followup3: '#A78BFA', agendado: '#F59E0B', nao_compareceu: '#F43F5E',
   reuniao_realizada: '#F97316', contrato_enviado: '#8B5CF6', contrato_assinado: '#7C3AED',
   fechado: '#10B981', declinado: '#EF4444',
 }
@@ -236,9 +236,9 @@ const DRAWER_TEMP_LABELS: Record<string, string> = {
 }
 const DRAWER_FUNIL_ORDER = [
   'trafego_pago','primeiro_contato','followup1','followup2','followup3',
-  'agendado','reuniao_realizada','contrato_enviado','contrato_assinado','fechado','declinado',
+  'agendado','nao_compareceu','reuniao_realizada','contrato_enviado','contrato_assinado','fechado','declinado',
 ]
-const AGENDOU_DRAWER = ['agendado','reuniao_realizada','contrato_enviado','contrato_assinado','fechado']
+const AGENDOU_DRAWER = ['agendado','nao_compareceu','reuniao_realizada','contrato_enviado','contrato_assinado','fechado']
 
 function CriativoDrawer({ criativo, leads, users, onClose }: {
   criativo: string
@@ -645,7 +645,7 @@ function downloadXLS(data: any[], filename: string) {
 // ── Mapa de Calor ─────────────────────────────────────────────────────────────
 const HEAT_DAYS  = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom']
 const HEAT_HOURS = Array.from({ length: 24 }, (_, i) => i)
-const AGENDOU_HEAT = ['agendado','reuniao_realizada','contrato_enviado','contrato_assinado','fechado']
+const AGENDOU_HEAT = ['agendado','nao_compareceu','reuniao_realizada','contrato_enviado','contrato_assinado','fechado']
 
 function buildHeatMatrix(leads: Lead[], metric: HeatMetric): number[][] {
   // matrix[dayIdx 0=Seg..6=Dom][hora 0..23]
@@ -890,7 +890,7 @@ export default function MarketingPage() {
 
   // Leads por vendedor (respeitando escopo já filtrado por perfil)
   const leadsPerVendedor = useMemo(() => {
-    const AGENDOU_V = ['agendado','reuniao_realizada','contrato_enviado','contrato_assinado','fechado']
+    const AGENDOU_V = ['agendado','nao_compareceu','reuniao_realizada','contrato_enviado','contrato_assinado','fechado']
     const map: Record<string, { id: string; nome: string; leads: number; vendas: number; receita: number; agendamentos: number }> = {}
     for (const l of filteredLeads) {
       const vid = l.vendedor_id || 'sem_vendedor'
