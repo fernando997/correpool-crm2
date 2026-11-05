@@ -551,6 +551,7 @@ function GetAnaliseIA({ vendedores }: { vendedores: { id: string; nome: string }
   const [contato, setContato] = useState(false)
   const [minLeads, setMinLeads] = useState('')
   const [top, setTop] = useState('')
+  const [etapas, setEtapas] = useState('')
   const [res, setRes] = useState<{ status: number; body: unknown } | null>(null)
   const [loading, setLoading] = useState(false)
 
@@ -562,6 +563,7 @@ function GetAnaliseIA({ vendedores }: { vendedores: { id: string; nome: string }
     if (contato)  p.set('incluir_contato', 'true')
     if (minLeads) p.set('min_leads', minLeads)
     if (top)      p.set('top', top)
+    if (etapas)   p.set('etapas', etapas.replace(/\s/g, ''))
     return p
   }
 
@@ -602,6 +604,7 @@ function GetAnaliseIA({ vendedores }: { vendedores: { id: string; nome: string }
         </div>
         <div><label className="label block mb-1">min_leads (rankings, padrão 5)</label><input className="input" type="number" min={1} value={minLeads} onChange={e => setMinLeads(e.target.value)} /></div>
         <div><label className="label block mb-1">top (itens por ranking, padrão 5)</label><input className="input" type="number" min={1} value={top} onChange={e => setTop(e.target.value)} /></div>
+        <div className="col-span-2"><label className="label block mb-1">etapas (só leads nessas etapas; traz etapa_desde em cada lead)</label><input className="input font-mono" value={etapas} onChange={e => setEtapas(e.target.value)} placeholder="agendado,nao_compareceu" /></div>
       </div>
 
       <p className="text-[10px] font-bold text-[#6B7C93] uppercase tracking-wider mb-2">Dados brutos (incluir) — o resumo vem sempre</p>

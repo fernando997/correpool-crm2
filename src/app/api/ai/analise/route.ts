@@ -15,13 +15,17 @@ function getSupabaseAdmin() {
   return createClient(url, key)
 }
 
-// Contorna o limite de 1000 linhas do Supabase
-async function fetchAll(supabase: SupabaseClient, table: string, columns = '*') {
+// Contorna o limite de 1000 linhas do Supabase. `filtro` aplica condições na própria consulta.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type Filtro = (q: any) => any
+async function fetchAll(supabase: SupabaseClient, table: string, columns = '*', filtro?: Filtro) {
   const PAGE = 1000
   const result: Record<string, unknown>[] = []
   let from = 0
   while (true) {
-    const { data, error } = await supabase.from(table).select(columns).range(from, from + PAGE - 1)
+    let q = supabase.from(table).select(columns)
+    if (filtro) q = filtro(q)
+    const { data, error } = await q.order('id').range(from, from + PAGE - 1)
     if (error) throw new Error(`${table}: ${error.message}`)
     if (!data || data.length === 0) break
     result.push(...(data as unknown as Record<string, unknown>[]))
@@ -160,14 +164,22 @@ export async function GET(req: NextRequest) {
   const incluirContato = sp.get('incluir_contato') === 'true'
   const minLeads = Math.max(1, parseInt(sp.get('min_leads') ?? '5', 10) || 5)  // mínimo de leads p/ entrar nos rankings
   const top = Math.max(1, parseInt(sp.get('top') ?? '5', 10) || 5)             // itens por ranking
+  // etapas=agendado,nao_compareceu → só leads nessas etapas (filtrado já no banco)
+  const etapas = sp.get('etapas')?.split(',').map((s) => s.trim()).filter(Boolean) ?? null
+  if (etapas) {
+    const invalidas = etapas.filter((e) => !FUNIL_ORDER.includes(e as never))
+    if (invalidas.length) {
+      return NextResponse.json({ success: false, error: `etapas inválidas: ${invalidas.join(', ')}. Aceitas: ${FUNIL_ORDER.join(', ')}` }, { status: 400 })
+    }
+  }
 
   let users: Row[], leads: Row[], anotacoes: Row[], historico: Row[], metas: Row[], alertas: Row[]
+  const supabase = getSupabaseAdmin()
   try {
-    const supabase = getSupabaseAdmin()
     // Nunca seleciona senha nem tokens do Google
     ;[users, leads, anotacoes, historico, metas, alertas] = await Promise.all([
       fetchAll(supabase, 'users', 'id, nome, email, tipo, vendedor_vinculado, ativo'),
-      fetchAll(supabase, 'leads'),
+      fetchAll(supabase, 'leads', '*', etapas ? (q) => q.in('status_funil', etapas) : undefined),
       incluir.has('anotacoes') ? fetchAll(supabase, 'anotacoes') : Promise.resolve([]),
       incluir.has('historico') ? fetchAll(supabase, 'historico_movimentacoes') : Promise.resolve([]),
       incluir.has('metas') ? fetchAll(supabase, 'metas') : Promise.resolve([]),
@@ -191,6 +203,33 @@ export async function GET(req: NextRequest) {
   alertas = alertas.filter((a) => leadIds.has(a.lead_id) && !a.resolvido)
 
   const nomeUsuario = Object.fromEntries(users.map((u) => [u.id, u.nome]))
+
+  // ── Desde quando cada lead está na etapa atual ───────────────
+  // Última movimentação PARA a etapa atual no histórico (transferência de vendedor,
+  // que grava de = para, não conta). Calculado quando o histórico já veio (incluir=historico)
+  // ou quando há filtro de etapas (aí busca o histórico só desses leads).
+  let movs: Row[] | null = incluir.has('historico') ? historico : null
+  if (!movs && etapas) {
+    try {
+      const ids = leads.map((l) => l.id as string)
+      movs = []
+      for (let i = 0; i < ids.length; i += 200) {
+        const lote = ids.slice(i, i + 200)
+        movs.push(...await fetchAll(supabase, 'historico_movimentacoes', 'id, lead_id, de_status, para_status, data', (q) => q.in('lead_id', lote)))
+      }
+    } catch (err) {
+      return NextResponse.json({ success: false, error: (err as Error).message }, { status: 500 })
+    }
+  }
+  const etapaDesde = new Map<string, string>()
+  if (movs) {
+    const statusDoLead = new Map(leads.map((l) => [l.id as string, l.status_funil]))
+    for (const h of movs) {
+      if (h.de_status === h.para_status || statusDoLead.get(h.lead_id as string) !== h.para_status) continue
+      const atual = etapaDesde.get(h.lead_id as string)
+      if (!atual || (h.data as string) > atual) etapaDesde.set(h.lead_id as string, h.data as string)
+    }
+  }
 
   // ── Agregados ────────────────────────────────────────────────
   const funil = FUNIL_ORDER.map((etapa) => {
@@ -268,13 +307,14 @@ export async function GET(req: NextRequest) {
       ...(incluirContato ? { telefone, email } : {}),
       vendedor_nome: nomeUsuario[l.vendedor_id as string] ?? null,
       sdr_nome: l.sdr_id ? nomeUsuario[l.sdr_id as string] ?? null : null,
+      ...(movs ? { etapa_desde: etapaDesde.get(l.id as string) ?? null } : {}),
     }
   })
 
   return NextResponse.json({
     success: true,
     gerado_em: new Date().toISOString(),
-    filtros: { inicio, fim, vendedor_id: vendedorId, incluir: Array.from(incluir), incluir_contato: incluirContato, min_leads: minLeads, top },
+    filtros: { inicio, fim, vendedor_id: vendedorId, etapas, incluir: Array.from(incluir), incluir_contato: incluirContato, min_leads: minLeads, top },
     dicionario: {
       descricao: 'CRM de vendas. Cada lead percorre o funil (status_funil). "fechado" e "contrato_assinado" contam como venda; "declinado" é perda (ver motivo_perda); "nao_compareceu" = agendou e faltou à reunião (conta em agendados, não em reuniões realizadas). Receita = valor_fechado (ou valor_contrato). valor_estimado é a expectativa antes do fechamento.',
       como_analisar: 'Use resumo.rankings para saber melhores/piores criativos, campanhas, sources, anúncios, posicionamentos, origens (canal de WhatsApp da IA), vendedores e SDRs (conversão, receita, declínio, agendamento e principal motivo de perda). resumo.marketing traz as métricas completas de cada valor de UTM e resumo.por_origem as de cada canal. Valores "nao_informado" = campo vazio no lead.',
@@ -293,6 +333,9 @@ export async function GET(req: NextRequest) {
       utm_valores: Object.fromEntries(
         Object.keys(UTM_CAMPOS).map((campo) => [campo, countBy(leads, campo)])
       ),
+      campos_extras_lead: {
+        etapa_desde: 'Data/hora em que o lead entrou na etapa atual (última movimentação para ela no histórico). Vem quando incluir tem historico ou quando há filtro etapas; null = sem registro no histórico.',
+      },
       metricas: {
         total_leads: 'Leads no grupo',
         agendados: 'Leads com reunião agendada (ou que passaram dessa etapa)',
