@@ -4,7 +4,7 @@ Base: `https://www.crmmodocorre.com.br/api/ai` · Somente HTTPS · JSON UTF-8
 Cabeçalho em todas as chamadas: `x-ai-key: <chave do Vitor>` (a Camila usa a mesma chave)
 Cabeçalho `Idempotency-Key: <id único da ação>` obrigatório em POST e PATCH (repetir a mesma chamada com a mesma chave não duplica; devolve a mesma resposta). Use uma chave nova para cada ação.
 
-**Origem = qual IA está falando.** `whatsapp_0800` (padrão) = Vitor · `whatsapp_camila` = Camila. A IA da origem vira o SDR padrão do lead (`vitor-ia` / `camila-ia`) e assina histórico e anotações.
+**Origem = qual canal/IA está falando.** `whatsapp_0800` (padrão) = Vitor · `whatsapp_camila` = Camila · `whatsapp_marcus` = Camila na campanha do Marcus (closer Kelly). A IA da origem vira o SDR padrão do lead (`vitor-ia` / `camila-ia`) e assina histórico e anotações. A origem separa os leads nos relatórios (`/api/ai/analise`: `por_origem`).
 
 | Método | Endereço | Para quê |
 |---|---|---|
@@ -24,7 +24,7 @@ Cabeçalho `Idempotency-Key: <id único da ação>` obrigatório em POST e PATCH
 ```
 → `201 { "ok": true, "id": "…", "acao": "criado", "etapa": "primeiro_contato" }` ou `200 { …, "acao": "atualizado" }`
 - `nome` obrigatório só para criar. `faixa_capital`: acima_150k · de_100k_a_150k · de_60k_a_100k · de_30k_a_60k · ate_30k · nao_informado. A `prioridade` (alta/media/menor) é calculada pela faixa.
-- `origem`: `whatsapp_0800` (padrão) ou `whatsapp_camila`. `sdr_id` (opcional): `vitor-ia` ou `camila-ia`; sem ele, vale a IA da origem.
+- `origem`: `whatsapp_0800` (padrão), `whatsapp_camila` ou `whatsapp_marcus`. `sdr_id` (opcional): `vitor-ia` ou `camila-ia`; sem ele, vale a IA da origem.
 - UTMs aceitas: `utm_source`, `utm_medium`, `utm_campaign`, `utm_content`, `utm_anuncio`.
 - Em lead que já existe, UTM, origem e SDR **só preenchem campo vazio** (a atribuição original é preservada). Para corrigir, use o PATCH.
 - `perfil: "locacao"` → lead vai para **Declinados** com motivo Locação.

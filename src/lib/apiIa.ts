@@ -150,11 +150,13 @@ export async function comIdempotencia(
 export const CANAIS_IA = {
   whatsapp_0800:   { usuario_id: 'vitor-ia',  nome: 'Vitor (IA)',  curto: 'Vitor',  por: 'pelo Vitor (IA)',  canal: 'WhatsApp 0800' },
   whatsapp_camila: { usuario_id: 'camila-ia', nome: 'Camila (IA)', curto: 'Camila', por: 'pela Camila (IA)', canal: 'WhatsApp do número novo' },
+  // Campanha do Marcus: a mesma Camila atende, mas a origem separa esses leads (e a performance por anúncio) da campanha dela
+  whatsapp_marcus: { usuario_id: 'camila-ia', nome: 'Camila (IA)', curto: 'Camila', por: 'pela Camila (IA)', canal: 'WhatsApp da campanha do Marcus (closer Kelly)' },
 } as const
 export type OrigemIa = keyof typeof CANAIS_IA
 export const ORIGEM_PADRAO: OrigemIa = 'whatsapp_0800'
 export const ORIGENS_IA = Object.keys(CANAIS_IA) as OrigemIa[]
-export const USUARIOS_IA: string[] = ORIGENS_IA.map((o) => CANAIS_IA[o].usuario_id)
+export const USUARIOS_IA: string[] = Array.from(new Set(ORIGENS_IA.map((o) => CANAIS_IA[o].usuario_id)))
 export const ehOrigemIa = (v: unknown): v is OrigemIa =>
   typeof v === 'string' && Object.prototype.hasOwnProperty.call(CANAIS_IA, v)
 // Lead sem origem de IA (ex.: veio de formulário) assina como o canal padrão (Vitor), como antes.
